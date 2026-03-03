@@ -1,0 +1,7 @@
+{
+  "name": "arena-app-site",
+  "private": true,
+  "devDependencies": {
+    "tailwindcss": "^3"
+  }
+}
