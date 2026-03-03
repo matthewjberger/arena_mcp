@@ -1,26 +1,49 @@
 set windows-shell := ["powershell.exe"]
 export RUST_BACKTRACE := "1"
 
+# Displays the list of available commands
 @just:
     just --list
 
+# Builds the project in release mode
 build:
     cargo build -r
 
-run *args:
-    cargo run -r -- {{args}}
+# Runs cargo check and format check
+check:
+    cargo check --all --tests
+    cargo fmt --all -- --check
 
-lint:
-    cargo clippy --all --tests -- -D warnings
+# Generates and opens documentation
+docs:
+    cargo doc --open
 
+# Fixes linting issues automatically
 fix:
     cargo clippy --all --tests --fix
 
+# Formats the code using cargo fmt
 format:
     cargo fmt --all
 
-check:
-    cargo check --all --tests
+# Runs linter and displays warnings
+lint:
+    cargo clippy --all --tests -- -D warnings
 
+# Runs the MCP server
+run *args:
+    cargo run -r -- {{args}}
+
+# Runs all tests
 test:
     cargo test --all -- --nocapture
+
+# Checks for unused dependencies
+udeps:
+    cargo machete
+
+# Displays version information for Rust tools
+@versions:
+    rustc --version
+    cargo fmt -- --version
+    cargo clippy -- --version

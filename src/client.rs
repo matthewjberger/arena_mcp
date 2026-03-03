@@ -42,12 +42,7 @@ impl ArenaClient {
             password: self.password.clone(),
             workspace_id: self.workspace_id,
         };
-        let response = self
-            .http
-            .post(&url)
-            .json(&body)
-            .send()
-            .await?;
+        let response = self.http.post(&url).json(&body).send().await?;
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
@@ -55,6 +50,19 @@ impl ArenaClient {
         }
         let login: LoginResponse = response.json().await?;
         Ok(login.arena_session_id)
+    }
+
+    pub(crate) async fn logout(&self) {
+        let session = self.session.lock().await;
+        if let Some(token) = session.as_ref() {
+            let url = format!("{}/login", self.base_url);
+            let _ = self
+                .http
+                .put(&url)
+                .header("arena_session_id", token)
+                .send()
+                .await;
+        }
     }
 
     async fn ensure_session(&self) -> Result<String> {
@@ -115,6 +123,190 @@ impl ArenaClient {
         Ok(response.json().await?)
     }
 
+    async fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let token = self.ensure_session().await?;
+
+        let response = self
+            .http
+            .post(&url)
+            .header("arena_session_id", &token)
+            .header("content-type", "application/json")
+            .json(body)
+            .send()
+            .await?;
+
+        if response.status().as_u16() == 401 {
+            self.invalidate_session(&token).await;
+            let new_token = self.ensure_session().await?;
+            let retry_response = self
+                .http
+                .post(&url)
+                .header("arena_session_id", &new_token)
+                .header("content-type", "application/json")
+                .json(body)
+                .send()
+                .await?;
+            if !retry_response.status().is_success() {
+                let status = retry_response.status();
+                let text = retry_response.text().await.unwrap_or_default();
+                return Err(anyhow!("Arena API error ({}): {}", status, text));
+            }
+            return Ok(retry_response.json().await?);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Arena API error ({}): {}", status, text));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    async fn put(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let token = self.ensure_session().await?;
+
+        let response = self
+            .http
+            .put(&url)
+            .header("arena_session_id", &token)
+            .header("content-type", "application/json")
+            .json(body)
+            .send()
+            .await?;
+
+        if response.status().as_u16() == 401 {
+            self.invalidate_session(&token).await;
+            let new_token = self.ensure_session().await?;
+            let retry_response = self
+                .http
+                .put(&url)
+                .header("arena_session_id", &new_token)
+                .header("content-type", "application/json")
+                .json(body)
+                .send()
+                .await?;
+            if !retry_response.status().is_success() {
+                let status = retry_response.status();
+                let text = retry_response.text().await.unwrap_or_default();
+                return Err(anyhow!("Arena API error ({}): {}", status, text));
+            }
+            return Ok(retry_response.json().await?);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Arena API error ({}): {}", status, text));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    async fn delete(&self, path: &str) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let token = self.ensure_session().await?;
+
+        let response = self
+            .http
+            .delete(&url)
+            .header("arena_session_id", &token)
+            .header("content-type", "application/json")
+            .send()
+            .await?;
+
+        if response.status().as_u16() == 401 {
+            self.invalidate_session(&token).await;
+            let new_token = self.ensure_session().await?;
+            let retry_response = self
+                .http
+                .delete(&url)
+                .header("arena_session_id", &new_token)
+                .header("content-type", "application/json")
+                .send()
+                .await?;
+            if !retry_response.status().is_success() {
+                let status = retry_response.status();
+                let text = retry_response.text().await.unwrap_or_default();
+                return Err(anyhow!("Arena API error ({}): {}", status, text));
+            }
+            return Ok(retry_response.json().await?);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Arena API error ({}): {}", status, text));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, String)> {
+        let url = format!("{}{}", self.base_url, path);
+        let token = self.ensure_session().await?;
+
+        let response = self
+            .http
+            .get(&url)
+            .header("arena_session_id", &token)
+            .send()
+            .await?;
+
+        if response.status().as_u16() == 401 {
+            self.invalidate_session(&token).await;
+            let new_token = self.ensure_session().await?;
+            let retry_response = self
+                .http
+                .get(&url)
+                .header("arena_session_id", &new_token)
+                .send()
+                .await?;
+            if !retry_response.status().is_success() {
+                let status = retry_response.status();
+                let text = retry_response.text().await.unwrap_or_default();
+                return Err(anyhow!("Arena API error ({}): {}", status, text));
+            }
+            let content_type = retry_response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            let bytes = retry_response.bytes().await?.to_vec();
+            return Ok((bytes, content_type));
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Arena API error ({}): {}", status, text));
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = response.bytes().await?.to_vec();
+        Ok((bytes, content_type))
+    }
+
+    fn parse_additional_attributes(
+        json: &Option<String>,
+    ) -> Result<Option<Vec<serde_json::Value>>> {
+        match json {
+            Some(text) => {
+                let parsed: Vec<serde_json::Value> = serde_json::from_str(text)?;
+                Ok(Some(parsed))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub(crate) async fn search_items(
         &self,
         params: &SearchItemsParams,
@@ -155,16 +347,157 @@ impl ArenaClient {
         Ok(serde_json::from_value(value)?)
     }
 
+    pub(crate) async fn create_item(&self, params: &CreateItemParams) -> Result<Item> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({
+            "name": params.name,
+            "category": { "guid": params.category_guid },
+        });
+        if let Some(number) = &params.number {
+            body["number"] = serde_json::json!(number);
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let value = self.post("/items", &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn update_item(&self, params: &UpdateItemParams) -> Result<Item> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({});
+        if let Some(name) = &params.name {
+            body["name"] = serde_json::json!(name);
+        }
+        if let Some(number) = &params.number {
+            body["number"] = serde_json::json!(number);
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let path = format!("/items/{}", params.guid);
+        let value = self.put(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn delete_item(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/items/{guid}");
+        self.delete(&path).await
+    }
+
+    pub(crate) async fn get_item_sourcing(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<ItemSourcingEntry>> {
+        let path = format!("/items/{guid}/sourcing");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_item_compliance(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<ComplianceRequirement>> {
+        let path = format!("/items/{guid}/compliance");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_item_references(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<ItemReference>> {
+        let path = format!("/items/{guid}/references");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_item_quality(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<QualityProcess>> {
+        let path = format!("/items/{guid}/quality");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn item_lifecycle_phase_change(
+        &self,
+        params: &ItemLifecyclePhaseChangeParams,
+    ) -> Result<serde_json::Value> {
+        let mut body = serde_json::json!({
+            "item": { "guid": params.item_guid },
+            "lifecyclePhase": { "guid": params.lifecycle_phase_guid },
+        });
+        if let Some(comment) = &params.comment {
+            body["comment"] = serde_json::json!(comment);
+        }
+        self.post("/items/lifecyclephasechanges", &body).await
+    }
+
     pub(crate) async fn get_bom(&self, guid: &str) -> Result<ArenaListResponse<BomLine>> {
         let path = format!("/items/{guid}/bom");
         let value = self.get(&path, &[]).await?;
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn get_where_used(&self, guid: &str) -> Result<ArenaListResponse<WhereUsedEntry>> {
+    pub(crate) async fn get_where_used(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<WhereUsedEntry>> {
         let path = format!("/items/{guid}/whereused");
         let value = self.get(&path, &[]).await?;
         Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn create_bom_line(&self, params: &CreateBomLineParams) -> Result<BomLine> {
+        let mut body = serde_json::json!({
+            "item": { "guid": params.child_item_guid },
+        });
+        if let Some(quantity) = params.quantity {
+            body["quantity"] = serde_json::json!(quantity);
+        }
+        if let Some(ref_des) = &params.ref_des {
+            body["refDes"] = serde_json::json!(ref_des);
+        }
+        if let Some(notes) = &params.notes {
+            body["notes"] = serde_json::json!(notes);
+        }
+        let path = format!("/items/{}/bom", params.item_guid);
+        let value = self.post(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn update_bom_line(&self, params: &UpdateBomLineParams) -> Result<BomLine> {
+        let mut body = serde_json::json!({});
+        if let Some(quantity) = params.quantity {
+            body["quantity"] = serde_json::json!(quantity);
+        }
+        if let Some(ref_des) = &params.ref_des {
+            body["refDes"] = serde_json::json!(ref_des);
+        }
+        if let Some(notes) = &params.notes {
+            body["notes"] = serde_json::json!(notes);
+        }
+        let path = format!("/items/{}/bom/{}", params.item_guid, params.line_guid);
+        let value = self.put(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn delete_bom_line(
+        &self,
+        params: &DeleteBomLineParams,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/items/{}/bom/{}", params.item_guid, params.line_guid);
+        self.delete(&path).await
     }
 
     pub(crate) async fn search_changes(
@@ -215,6 +548,108 @@ impl ArenaClient {
         Ok(serde_json::from_value(value)?)
     }
 
+    pub(crate) async fn create_change(&self, params: &CreateChangeParams) -> Result<Change> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({});
+        if let Some(title) = &params.title {
+            body["title"] = serde_json::json!(title);
+        }
+        if let Some(category_guid) = &params.category_guid {
+            body["category"] = serde_json::json!({ "guid": category_guid });
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let value = self.post("/changes", &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn update_change(&self, params: &UpdateChangeParams) -> Result<Change> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({});
+        if let Some(title) = &params.title {
+            body["title"] = serde_json::json!(title);
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let path = format!("/changes/{}", params.guid);
+        let value = self.put(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn change_change_status(
+        &self,
+        params: &ChangeChangeStatusParams,
+    ) -> Result<serde_json::Value> {
+        let mut body = serde_json::json!({
+            "change": { "guid": params.change_guid },
+            "lifecycleStatus": { "type": params.status },
+        });
+        if let Some(comment) = &params.comment {
+            body["comment"] = serde_json::json!(comment);
+        }
+        if let Some(force) = params.force {
+            body["force"] = serde_json::json!(force);
+        }
+        self.post("/changes/statuschanges", &body).await
+    }
+
+    pub(crate) async fn add_change_affected_item(
+        &self,
+        params: &AddChangeAffectedItemParams,
+    ) -> Result<ChangeAffectedItem> {
+        let mut body = serde_json::json!({
+            "item": { "guid": params.item_guid },
+        });
+        if let Some(guid) = &params.new_lifecycle_phase_guid {
+            body["newLifecyclePhase"] = serde_json::json!({ "guid": guid });
+        }
+        if let Some(revision) = &params.new_revision_number {
+            body["newRevisionNumber"] = serde_json::json!(revision);
+        }
+        let path = format!("/changes/{}/items", params.change_guid);
+        let value = self.post(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn remove_change_affected_item(
+        &self,
+        params: &RemoveChangeAffectedItemParams,
+    ) -> Result<serde_json::Value> {
+        let path = format!(
+            "/changes/{}/items/{}",
+            params.change_guid, params.affected_item_guid
+        );
+        self.delete(&path).await
+    }
+
+    pub(crate) async fn get_change_files(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<ItemFile>> {
+        let path = format!("/changes/{guid}/files");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_change_implementation_statuses(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<ImplementationStatus>> {
+        let path = format!("/changes/{guid}/implementationstatuses");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
     pub(crate) async fn get_item_revisions(
         &self,
         guid: &str,
@@ -230,36 +665,33 @@ impl ArenaClient {
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn search_suppliers(
+    pub(crate) async fn get_item_file_content(
         &self,
-        params: &SearchSuppliersParams,
-    ) -> Result<serde_json::Value> {
-        let mut query = Vec::new();
-        if let Some(name) = &params.name {
-            query.push(("name".to_string(), name.clone()));
+        item_guid: &str,
+        file_guid: &str,
+    ) -> Result<String> {
+        let path = format!("/items/{item_guid}/files/{file_guid}/content");
+        let (bytes, content_type) = self.get_bytes(&path).await?;
+        if content_type.starts_with("text/")
+            || content_type.contains("json")
+            || content_type.contains("xml")
+        {
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
+        } else {
+            Ok(format!("binary file, {} bytes", bytes.len()))
         }
-        if let Some(offset) = params.offset {
-            query.push(("offset".to_string(), offset.to_string()));
-        }
-        if let Some(limit) = params.limit {
-            query.push(("limit".to_string(), limit.to_string()));
-        }
-        self.get("/suppliers", &query).await
     }
 
-    pub(crate) async fn search_quality_processes(
+    pub(crate) async fn search_files(
         &self,
-        params: &SearchQualityProcessesParams,
-    ) -> Result<serde_json::Value> {
+        params: &SearchFilesParams,
+    ) -> Result<ArenaListResponse<FileEntry>> {
         let mut query = Vec::new();
-        if let Some(number) = &params.number {
-            query.push(("number".to_string(), number.clone()));
-        }
         if let Some(name) = &params.name {
             query.push(("name".to_string(), name.clone()));
         }
-        if let Some(status) = &params.status {
-            query.push(("status".to_string(), status.clone()));
+        if let Some(category_guid) = &params.category_guid {
+            query.push(("category.guid".to_string(), category_guid.clone()));
         }
         if let Some(offset) = params.offset {
             query.push(("offset".to_string(), offset.to_string()));
@@ -267,13 +699,20 @@ impl ArenaClient {
         if let Some(limit) = params.limit {
             query.push(("limit".to_string(), limit.to_string()));
         }
-        self.get("/qualityprocesses", &query).await
+        let value = self.get("/files", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_file(&self, guid: &str) -> Result<FileEntry> {
+        let path = format!("/files/{guid}");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
     }
 
     pub(crate) async fn search_requests(
         &self,
         params: &SearchRequestsParams,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<ArenaListResponse<Request>> {
         let mut query = Vec::new();
         if let Some(number) = &params.number {
             query.push(("number".to_string(), number.clone()));
@@ -293,7 +732,286 @@ impl ArenaClient {
         if let Some(limit) = params.limit {
             query.push(("limit".to_string(), limit.to_string()));
         }
-        self.get("/requests", &query).await
+        let value = self.get("/requests", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_request(&self, guid: &str) -> Result<Request> {
+        let path = format!("/requests/{guid}");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn create_request(&self, params: &CreateRequestParams) -> Result<Request> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({});
+        if let Some(title) = &params.title {
+            body["title"] = serde_json::json!(title);
+        }
+        if let Some(category_guid) = &params.category_guid {
+            body["category"] = serde_json::json!({ "guid": category_guid });
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let value = self.post("/requests", &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn update_request(&self, params: &UpdateRequestParams) -> Result<Request> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({});
+        if let Some(title) = &params.title {
+            body["title"] = serde_json::json!(title);
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let path = format!("/requests/{}", params.guid);
+        let value = self.put(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn change_request_status(
+        &self,
+        params: &ChangeRequestStatusParams,
+    ) -> Result<serde_json::Value> {
+        let mut body = serde_json::json!({
+            "request": { "guid": params.request_guid },
+            "lifecycleStatus": { "type": params.status },
+        });
+        if let Some(comment) = &params.comment {
+            body["comment"] = serde_json::json!(comment);
+        }
+        self.post("/requests/statuschanges", &body).await
+    }
+
+    pub(crate) async fn get_request_items(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<serde_json::Value>> {
+        let path = format!("/requests/{guid}/items");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn search_suppliers(
+        &self,
+        params: &SearchSuppliersParams,
+    ) -> Result<ArenaListResponse<Supplier>> {
+        let mut query = Vec::new();
+        if let Some(name) = &params.name {
+            query.push(("name".to_string(), name.clone()));
+        }
+        if let Some(offset) = params.offset {
+            query.push(("offset".to_string(), offset.to_string()));
+        }
+        if let Some(limit) = params.limit {
+            query.push(("limit".to_string(), limit.to_string()));
+        }
+        let value = self.get("/suppliers", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_supplier(&self, guid: &str) -> Result<Supplier> {
+        let path = format!("/suppliers/{guid}");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn create_supplier(&self, params: &CreateSupplierParams) -> Result<Supplier> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({
+            "name": params.name,
+        });
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let value = self.post("/suppliers", &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn update_supplier(&self, params: &UpdateSupplierParams) -> Result<Supplier> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({});
+        if let Some(name) = &params.name {
+            body["name"] = serde_json::json!(name);
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let path = format!("/suppliers/{}", params.guid);
+        let value = self.put(&path, &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn search_supplier_items(
+        &self,
+        params: &SearchSupplierItemsParams,
+    ) -> Result<ArenaListResponse<SupplierItem>> {
+        let mut query = Vec::new();
+        if let Some(supplier_guid) = &params.supplier_guid {
+            query.push(("supplier.guid".to_string(), supplier_guid.clone()));
+        }
+        if let Some(offset) = params.offset {
+            query.push(("offset".to_string(), offset.to_string()));
+        }
+        if let Some(limit) = params.limit {
+            query.push(("limit".to_string(), limit.to_string()));
+        }
+        let value = self.get("/supplieritems", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn search_quality_processes(
+        &self,
+        params: &SearchQualityProcessesParams,
+    ) -> Result<ArenaListResponse<QualityProcess>> {
+        let mut query = Vec::new();
+        if let Some(number) = &params.number {
+            query.push(("number".to_string(), number.clone()));
+        }
+        if let Some(name) = &params.name {
+            query.push(("name".to_string(), name.clone()));
+        }
+        if let Some(status) = &params.status {
+            query.push(("status".to_string(), status.clone()));
+        }
+        if let Some(offset) = params.offset {
+            query.push(("offset".to_string(), offset.to_string()));
+        }
+        if let Some(limit) = params.limit {
+            query.push(("limit".to_string(), limit.to_string()));
+        }
+        let value = self.get("/qualityprocesses", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_quality_process(&self, guid: &str) -> Result<QualityProcess> {
+        let path = format!("/qualityprocesses/{guid}");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_quality_process_steps(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<QualityStep>> {
+        let path = format!("/qualityprocesses/{guid}/steps");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn change_quality_status(
+        &self,
+        params: &ChangeQualityStatusParams,
+    ) -> Result<serde_json::Value> {
+        let mut body = serde_json::json!({
+            "qualityProcess": { "guid": params.quality_guid },
+            "status": params.status,
+        });
+        if let Some(comment) = &params.comment {
+            body["comment"] = serde_json::json!(comment);
+        }
+        self.post("/qualityprocesses/statuschanges", &body).await
+    }
+
+    pub(crate) async fn search_tickets(
+        &self,
+        params: &SearchTicketsParams,
+    ) -> Result<ArenaListResponse<Ticket>> {
+        let mut query = Vec::new();
+        if let Some(number) = &params.number {
+            query.push(("number".to_string(), number.clone()));
+        }
+        if let Some(title) = &params.title {
+            query.push(("title".to_string(), title.clone()));
+        }
+        if let Some(offset) = params.offset {
+            query.push(("offset".to_string(), offset.to_string()));
+        }
+        if let Some(limit) = params.limit {
+            query.push(("limit".to_string(), limit.to_string()));
+        }
+        let value = self.get("/tickets", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_ticket(&self, guid: &str) -> Result<Ticket> {
+        let path = format!("/tickets/{guid}");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn create_ticket(&self, params: &CreateTicketParams) -> Result<Ticket> {
+        let additional_attributes =
+            Self::parse_additional_attributes(&params.additional_attributes_json)?;
+        let mut body = serde_json::json!({
+            "template": { "guid": params.template_guid },
+        });
+        if let Some(title) = &params.title {
+            body["title"] = serde_json::json!(title);
+        }
+        if let Some(description) = &params.description {
+            body["description"] = serde_json::json!(description);
+        }
+        if let Some(attrs) = additional_attributes {
+            body["additionalAttributes"] = serde_json::json!(attrs);
+        }
+        let value = self.post("/tickets", &body).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn search_training_plans(
+        &self,
+        params: &SearchTrainingPlansParams,
+    ) -> Result<ArenaListResponse<TrainingPlan>> {
+        let mut query = Vec::new();
+        if let Some(number) = &params.number {
+            query.push(("number".to_string(), number.clone()));
+        }
+        if let Some(name) = &params.name {
+            query.push(("name".to_string(), name.clone()));
+        }
+        if let Some(offset) = params.offset {
+            query.push(("offset".to_string(), offset.to_string()));
+        }
+        if let Some(limit) = params.limit {
+            query.push(("limit".to_string(), limit.to_string()));
+        }
+        let value = self.get("/trainingplans", &query).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_training_plan(&self, guid: &str) -> Result<TrainingPlan> {
+        let path = format!("/trainingplans/{guid}");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_training_plan_records(
+        &self,
+        guid: &str,
+    ) -> Result<ArenaListResponse<TrainingRecord>> {
+        let path = format!("/trainingplans/{guid}/records");
+        let value = self.get(&path, &[]).await?;
+        Ok(serde_json::from_value(value)?)
     }
 
     pub(crate) async fn get_lifecycle_phases(
@@ -305,7 +1023,24 @@ impl ArenaClient {
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn get_item_categories(&self) -> Result<serde_json::Value> {
-        self.get("/settings/items/categories", &[]).await
+    pub(crate) async fn get_item_categories(
+        &self,
+    ) -> Result<ArenaListResponse<ItemCategory>> {
+        let value = self.get("/settings/items/categories", &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_change_categories(
+        &self,
+    ) -> Result<ArenaListResponse<ChangeCategory>> {
+        let value = self.get("/settings/changes/categories", &[]).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub(crate) async fn get_item_number_formats(
+        &self,
+    ) -> Result<ArenaListResponse<NumberFormat>> {
+        let value = self.get("/settings/items/numberformats", &[]).await?;
+        Ok(serde_json::from_value(value)?)
     }
 }
