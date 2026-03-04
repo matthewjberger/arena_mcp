@@ -84,6 +84,7 @@ pub enum FrontendCommand {
         enabled: bool,
     },
     ReadLogs,
+    ResetLogs,
     OpenLogFile,
 }
 
@@ -149,6 +150,7 @@ pub enum BackendEvent {
     },
     LogContent {
         text: String,
+        append: bool,
     },
 }
 

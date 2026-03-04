@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+use std::io::{Read as _, Seek, SeekFrom};
 use std::sync::mpsc;
 
 use arena_app_protocol::{AgentStatus, ArenaMethod, ArenaResult, BackendEvent, FrontendCommand};
@@ -65,6 +66,12 @@ enum FileResult {
     Error(FileDownloadError),
 }
 
+struct LogReadResult {
+    text: String,
+    append: bool,
+    new_offset: u64,
+}
+
 enum LoginResult {
     Success {
         email: String,
@@ -98,6 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let log_file_path = std::path::PathBuf::from(&log_config.directory)
         .join(log_file_name("Arena PLM", &log_config));
+    let (log_read_tx, log_read_rx) = mpsc::channel::<LogReadResult>();
 
     launch(ArenaApp {
         port,
@@ -118,6 +126,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         credentials: None,
         write_mode: false,
         log_file_path,
+        log_file_offset: 0,
+        log_read_pending: false,
+        log_read_tx,
+        log_read_rx,
         accumulated_text: String::new(),
         accumulated_thinking: String::new(),
         accumulated_tool_input: String::new(),
@@ -145,6 +157,10 @@ struct ArenaApp {
     credentials: Option<Credentials>,
     write_mode: bool,
     log_file_path: std::path::PathBuf,
+    log_file_offset: u64,
+    log_read_pending: bool,
+    log_read_tx: mpsc::Sender<LogReadResult>,
+    log_read_rx: mpsc::Receiver<LogReadResult>,
     accumulated_text: String,
     accumulated_thinking: String,
     accumulated_tool_input: String,
@@ -173,6 +189,7 @@ impl State for ArenaApp {
         self.forward_cli_events();
         self.forward_arena_results();
         self.forward_file_results();
+        self.forward_log_results();
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -295,9 +312,19 @@ impl ArenaApp {
                     self.ctx.send(BackendEvent::WriteModeChanged { enabled });
                 }
                 FrontendCommand::ReadLogs => {
-                    let text = std::fs::read_to_string(&self.log_file_path)
-                        .unwrap_or_else(|error| format!("Failed to read log file: {error}"));
-                    self.ctx.send(BackendEvent::LogContent { text });
+                    if !self.log_read_pending {
+                        self.log_read_pending = true;
+                        let path = self.log_file_path.clone();
+                        let offset = self.log_file_offset;
+                        let sender = self.log_read_tx.clone();
+                        std::thread::spawn(move || {
+                            let result = read_log_file_from(&path, offset);
+                            let _ = sender.send(result);
+                        });
+                    }
+                }
+                FrontendCommand::ResetLogs => {
+                    self.log_file_offset = 0;
                 }
                 FrontendCommand::OpenLogFile => {
                     let path = rfd::FileDialog::new()
@@ -305,9 +332,16 @@ impl ArenaApp {
                         .add_filter("Log files", &["log", "txt"])
                         .pick_file();
                     if let Some(path) = path {
-                        let text = std::fs::read_to_string(&path)
-                            .unwrap_or_else(|error| format!("Failed to read file: {error}"));
-                        self.ctx.send(BackendEvent::LogContent { text });
+                        let sender = self.log_read_tx.clone();
+                        std::thread::spawn(move || {
+                            let text = std::fs::read_to_string(&path)
+                                .unwrap_or_else(|error| format!("Failed to read file: {error}"));
+                            let _ = sender.send(LogReadResult {
+                                text,
+                                append: false,
+                                new_offset: 0,
+                            });
+                        });
                     }
                 }
             }
@@ -1075,6 +1109,53 @@ impl ArenaApp {
                 }
             }
         }
+    }
+
+    fn forward_log_results(&mut self) {
+        for result in self.log_read_rx.try_iter() {
+            self.log_read_pending = false;
+            self.log_file_offset = result.new_offset;
+            if !result.text.is_empty() || !result.append {
+                self.ctx.send(BackendEvent::LogContent {
+                    text: result.text,
+                    append: result.append,
+                });
+            }
+        }
+    }
+}
+
+fn read_log_file_from(path: &std::path::Path, offset: u64) -> LogReadResult {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) => {
+            return LogReadResult {
+                text: format!("Failed to read log file: {error}"),
+                append: false,
+                new_offset: 0,
+            };
+        }
+    };
+    let file_size = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+    if offset > 0 && file_size >= offset {
+        let mut file = file;
+        if file.seek(SeekFrom::Start(offset)).is_ok() {
+            let mut text = String::new();
+            if file.read_to_string(&mut text).is_ok() {
+                return LogReadResult {
+                    text,
+                    append: true,
+                    new_offset: file_size,
+                };
+            }
+        }
+    }
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|error| format!("Failed to read: {error}"));
+    LogReadResult {
+        text,
+        append: false,
+        new_offset: file_size,
     }
 }
 

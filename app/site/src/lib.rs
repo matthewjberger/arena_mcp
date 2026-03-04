@@ -145,8 +145,12 @@ pub fn App() -> impl IntoView {
                 BackendEvent::WriteModeChanged { enabled } => {
                     app.write_mode.set(enabled);
                 }
-                BackendEvent::LogContent { text } => {
-                    app.log_content.set(text);
+                BackendEvent::LogContent { text, append } => {
+                    if append {
+                        app.log_content.update(|content| content.push_str(&text));
+                    } else {
+                        app.log_content.set(text);
+                    }
                 }
             });
         }
