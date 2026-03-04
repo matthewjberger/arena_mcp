@@ -382,7 +382,8 @@ pub fn LogsView() -> impl IntoView {
                 existing.truncate(truncate_to);
                 existing.extend(new_blocks);
             });
-            let new_complete = blocks_signal.with_untracked(|blocks| blocks.len().saturating_sub(1));
+            let new_complete =
+                blocks_signal.with_untracked(|blocks| blocks.len().saturating_sub(1));
             parser_resume_line.set(last_header);
             parser_complete_count.set(new_complete);
         }

@@ -1,3 +1,4 @@
+use arena_app_protocol::RateLimitInfo;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,7 @@ pub struct AppState {
     pub write_mode: RwSignal<bool>,
     pub session_id: RwSignal<Option<String>>,
     pub log_content: RwSignal<String>,
+    pub rate_limit: RwSignal<Option<RateLimitInfo>>,
 }
 
 impl AppState {
@@ -30,6 +32,7 @@ impl AppState {
             write_mode: RwSignal::new(false),
             session_id: RwSignal::new(None),
             log_content: RwSignal::new(String::new()),
+            rate_limit: RwSignal::new(None),
         }
     }
 }

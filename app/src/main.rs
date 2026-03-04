@@ -3,7 +3,9 @@
 use std::io::{Read as _, Seek, SeekFrom};
 use std::sync::mpsc;
 
-use arena_app_protocol::{AgentStatus, ArenaMethod, ArenaResult, BackendEvent, FrontendCommand};
+use arena_app_protocol::{
+    AgentStatus, ArenaMethod, ArenaResult, BackendEvent, FrontendCommand, RateLimitInfo,
+};
 use base64::Engine;
 use include_dir::{Dir, include_dir};
 use nightshade::claude::{ClaudeConfig, CliCommand, CliEvent, McpConfig, spawn_cli_worker};
@@ -79,6 +81,9 @@ enum LoginResult {
         workspace_id: Option<String>,
         base_url: String,
         session_token: String,
+        request_limit: u32,
+        requests_remaining: Option<u32>,
+        reset_time: Option<String>,
     },
     Failure {
         message: String,
@@ -96,6 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (arena_result_tx, arena_result_rx) = mpsc::channel::<(u32, ArenaResult)>();
     let (file_result_tx, file_result_rx) = mpsc::channel::<FileResult>();
     let (login_result_tx, login_result_rx) = mpsc::channel::<LoginResult>();
+    let (rate_limit_tx, rate_limit_rx) = mpsc::channel::<RateLimitInfo>();
 
     let port = serve_embedded_dir(&DIST);
 
@@ -123,6 +129,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         file_result_rx,
         login_result_tx,
         login_result_rx,
+        rate_limit_tx,
+        rate_limit_rx,
         credentials: None,
         write_mode: false,
         log_file_path,
@@ -154,6 +162,8 @@ struct ArenaApp {
     file_result_rx: mpsc::Receiver<FileResult>,
     login_result_tx: mpsc::Sender<LoginResult>,
     login_result_rx: mpsc::Receiver<LoginResult>,
+    rate_limit_tx: mpsc::Sender<RateLimitInfo>,
+    rate_limit_rx: mpsc::Receiver<RateLimitInfo>,
     credentials: Option<Credentials>,
     write_mode: bool,
     log_file_path: std::path::PathBuf,
@@ -190,6 +200,7 @@ impl State for ArenaApp {
         self.forward_arena_results();
         self.forward_file_results();
         self.forward_log_results();
+        self.forward_rate_limits();
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -425,6 +436,17 @@ impl ArenaApp {
                 return;
             }
 
+            let requests_remaining = response
+                .headers()
+                .get("X-Arena-Requests-Remaining")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u32>().ok());
+            let reset_time = response
+                .headers()
+                .get("X-Arena-Next-Request-Limit-Reset")
+                .and_then(|value| value.to_str().ok())
+                .map(String::from);
+
             let json: serde_json::Value = match response.json() {
                 Ok(json) => json,
                 Err(error) => {
@@ -447,6 +469,11 @@ impl ArenaApp {
                 }
             };
 
+            let request_limit = json
+                .get("workspaceRequestLimit")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(1000) as u32;
+
             tracing::info!("login successful, session token acquired");
             let _ = login_result_tx.send(LoginResult::Success {
                 email: email_clone,
@@ -454,6 +481,9 @@ impl ArenaApp {
                 workspace_id: workspace_id_clone,
                 base_url: base_url_clone,
                 session_token,
+                request_limit,
+                requests_remaining,
+                reset_time,
             });
         });
     }
@@ -468,6 +498,9 @@ impl ArenaApp {
                     workspace_id,
                     base_url,
                     session_token,
+                    request_limit,
+                    requests_remaining,
+                    reset_time,
                 } => {
                     tracing::info!(%email, %base_url, "login succeeded, spawning workers");
                     let credentials = Credentials {
@@ -476,7 +509,7 @@ impl ArenaApp {
                         workspace_id,
                         base_url,
                     };
-                    self.spawn_arena_worker(&credentials, session_token);
+                    self.spawn_arena_worker(&credentials, session_token, request_limit);
                     self.credentials = Some(credentials);
                     self.spawn_cli_worker();
                     self.ctx.send(BackendEvent::LoginSuccess {
@@ -484,6 +517,13 @@ impl ArenaApp {
                     });
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Idle,
+                    });
+                    self.ctx.send(BackendEvent::RateLimitUpdate {
+                        info: RateLimitInfo {
+                            requests_remaining: requests_remaining.unwrap_or(request_limit),
+                            request_limit,
+                            reset_time,
+                        },
                     });
                 }
                 LoginResult::Failure { message } => {
@@ -506,13 +546,19 @@ impl ArenaApp {
         self.cli_cmd_rx = Some(new_cmd_rx);
     }
 
-    fn spawn_arena_worker(&mut self, credentials: &Credentials, initial_token: String) {
+    fn spawn_arena_worker(
+        &mut self,
+        credentials: &Credentials,
+        initial_token: String,
+        request_limit: u32,
+    ) {
         tracing::info!("spawning arena worker thread");
         let (arena_req_tx, arena_req_rx) = mpsc::channel::<(u32, ArenaMethod)>();
         let (file_req_tx, file_req_rx) = mpsc::channel::<FileDownloadRequest>();
 
         let arena_result_tx = self.arena_result_tx.clone();
         let file_result_tx = self.file_result_tx.clone();
+        let rate_limit_tx = self.rate_limit_tx.clone();
         let base_url = credentials.base_url.clone();
         let email = credentials.email.clone();
         let password = credentials.password.clone();
@@ -555,6 +601,7 @@ impl ArenaApp {
                     tracing::error!(%status, "arena worker: re-auth failed");
                     return Err(format!("Login failed: {}", response.status()));
                 }
+                extract_rate_limit(&response, &rate_limit_tx, request_limit);
                 let json: serde_json::Value = response.json().map_err(|error| error.to_string())?;
                 json.get("arenaSessionId")
                     .and_then(|value| value.as_str())
@@ -600,6 +647,7 @@ impl ArenaApp {
                         .query(query)
                         .send()
                         .map_err(|error| error.to_string())?;
+                    extract_rate_limit(&retry, &rate_limit_tx, request_limit);
                     return retry.json().map_err(|error| error.to_string());
                 }
 
@@ -609,6 +657,7 @@ impl ArenaApp {
                     tracing::error!(%path, %status, "arena worker: API error");
                     return Err(format!("Arena API error ({status}): {text}"));
                 }
+                extract_rate_limit(&response, &rate_limit_tx, request_limit);
                 response.json().map_err(|error| error.to_string())
             };
 
@@ -634,6 +683,7 @@ impl ArenaApp {
                         .header("arena_session_id", &new_token)
                         .send()
                         .map_err(|error| error.to_string())?;
+                    extract_rate_limit(&retry, &rate_limit_tx, request_limit);
                     let mime = retry
                         .headers()
                         .get("content-type")
@@ -650,6 +700,7 @@ impl ArenaApp {
                     tracing::error!(%path, %status, "arena worker: file download error");
                     return Err(format!("Arena API error ({status}): {text}"));
                 }
+                extract_rate_limit(&response, &rate_limit_tx, request_limit);
                 let mime = response
                     .headers()
                     .get("content-type")
@@ -1123,6 +1174,12 @@ impl ArenaApp {
             }
         }
     }
+
+    fn forward_rate_limits(&mut self) {
+        for info in self.rate_limit_rx.try_iter() {
+            self.ctx.send(BackendEvent::RateLimitUpdate { info });
+        }
+    }
 }
 
 fn read_log_file_from(path: &std::path::Path, offset: u64) -> LogReadResult {
@@ -1156,6 +1213,30 @@ fn read_log_file_from(path: &std::path::Path, offset: u64) -> LogReadResult {
         text,
         append: false,
         new_offset: file_size,
+    }
+}
+
+fn extract_rate_limit(
+    response: &reqwest::blocking::Response,
+    sender: &mpsc::Sender<RateLimitInfo>,
+    request_limit: u32,
+) {
+    let remaining = response
+        .headers()
+        .get("X-Arena-Requests-Remaining")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u32>().ok());
+    let reset = response
+        .headers()
+        .get("X-Arena-Next-Request-Limit-Reset")
+        .and_then(|value| value.to_str().ok())
+        .map(String::from);
+    if let Some(requests_remaining) = remaining {
+        let _ = sender.send(RateLimitInfo {
+            requests_remaining,
+            request_limit,
+            reset_time: reset,
+        });
     }
 }
 

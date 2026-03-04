@@ -49,6 +49,13 @@ pub enum ArenaMethod {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct RateLimitInfo {
+    pub requests_remaining: u32,
+    pub request_limit: u32,
+    pub reset_time: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub enum ArenaResult {
     Success { json: String },
     Error { message: String },
@@ -151,6 +158,9 @@ pub enum BackendEvent {
     LogContent {
         text: String,
         append: bool,
+    },
+    RateLimitUpdate {
+        info: RateLimitInfo,
     },
 }
 

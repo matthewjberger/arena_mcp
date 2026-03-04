@@ -152,6 +152,9 @@ pub fn App() -> impl IntoView {
                         app.log_content.set(text);
                     }
                 }
+                BackendEvent::RateLimitUpdate { info } => {
+                    app.rate_limit.set(Some(info));
+                }
             });
         }
     });
@@ -208,6 +211,43 @@ fn MainApp() -> impl IntoView {
                         }}
                     </div>
                 </div>
+                {move || {
+                    app.rate_limit.get().map(|info| {
+                        let remaining = info.requests_remaining;
+                        let total = info.request_limit;
+                        let fraction = if total > 0 { remaining as f64 / total as f64 } else { 0.0 };
+                        let percent = ((fraction * 100.0) as u32).min(100);
+                        let bar_color = if fraction > 0.5 {
+                            "bg-green-500"
+                        } else if fraction > 0.1 {
+                            "bg-yellow-500"
+                        } else {
+                            "bg-red-500"
+                        };
+                        let remaining_text = format_with_commas(remaining);
+                        let total_text = format_with_commas(total);
+                        view! {
+                            <div class="px-3 py-2 border-b border-[#30363d]">
+                                <div class="w-full h-1.5 bg-[#21262d] rounded-full overflow-hidden mb-1">
+                                    <div
+                                        class=format!("h-full rounded-full {bar_color}")
+                                        style=format!("width: {}%", percent)
+                                    ></div>
+                                </div>
+                                <div class="text-xs text-[#8b949e]">
+                                    {format!("{remaining_text} / {total_text} remaining")}
+                                </div>
+                                {info.reset_time.map(|reset| {
+                                    view! {
+                                        <div class="text-xs text-[#484f58]">
+                                            {format!("Resets: {reset}")}
+                                        </div>
+                                    }
+                                })}
+                            </div>
+                        }
+                    })
+                }}
                 <div class="flex-1 p-2 space-y-1">
                     {sidebar_btn("Chat", "💬", View::Chat)}
                     {sidebar_btn("Items", "📦", View::Items)}
@@ -236,4 +276,17 @@ fn MainApp() -> impl IntoView {
             </div>
         </div>
     }
+}
+
+fn format_with_commas(value: u32) -> String {
+    let string = value.to_string();
+    let bytes = string.as_bytes();
+    let mut result = String::with_capacity(string.len() + bytes.len() / 3);
+    for (index, &byte) in bytes.iter().enumerate() {
+        if index > 0 && (bytes.len() - index).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(byte as char);
+    }
+    result
 }

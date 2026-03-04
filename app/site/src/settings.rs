@@ -16,6 +16,7 @@ pub fn SettingsView() -> impl IntoView {
     let on_logout = move |_| {
         nightshade::webview::send(&FrontendCommand::Logout);
         app.logged_in.set(false);
+        app.rate_limit.set(None);
     };
 
     let delete_search = move |index: usize| {
