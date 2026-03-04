@@ -70,6 +70,7 @@ enum LoginResult {
         password: String,
         workspace_id: Option<String>,
         base_url: String,
+        session_token: String,
     },
     Failure {
         message: String,
@@ -202,13 +203,16 @@ impl ArenaApp {
                     });
                 }
                 FrontendCommand::ArenaRequest { request_id, method } => {
-                    if let Some(arena_tx) = &self.arena_tx {
-                        let _ = arena_tx.send((request_id, method));
-                    } else {
+                    let sent = self
+                        .arena_tx
+                        .as_ref()
+                        .map(|tx| tx.send((request_id, method)).is_ok())
+                        .unwrap_or(false);
+                    if !sent {
                         self.ctx.send(BackendEvent::ArenaResponse {
                             request_id,
                             result: ArenaResult::Error {
-                                message: "Not logged in".into(),
+                                message: "Not connected to Arena".into(),
                             },
                         });
                     }
@@ -219,17 +223,23 @@ impl ArenaApp {
                     file_guid,
                     file_name,
                 } => {
-                    if let Some(file_tx) = &self.file_tx {
-                        let _ = file_tx.send(FileDownloadRequest {
-                            request_id,
-                            item_guid,
-                            file_guid,
-                            file_name,
-                        });
-                    } else {
+                    let sent = self
+                        .file_tx
+                        .as_ref()
+                        .map(|tx| {
+                            tx.send(FileDownloadRequest {
+                                request_id,
+                                item_guid,
+                                file_guid,
+                                file_name,
+                            })
+                            .is_ok()
+                        })
+                        .unwrap_or(false);
+                    if !sent {
                         self.ctx.send(BackendEvent::FileError {
                             request_id,
-                            message: "Not logged in".into(),
+                            message: "Not connected to Arena".into(),
                         });
                     }
                 }
@@ -312,11 +322,35 @@ impl ArenaApp {
                 return;
             }
 
+            let json: serde_json::Value = match response.json() {
+                Ok(json) => json,
+                Err(error) => {
+                    let _ = login_result_tx.send(LoginResult::Failure {
+                        message: format!("Invalid login response: {error}"),
+                    });
+                    return;
+                }
+            };
+
+            let session_token = match json
+                .get("arenaSessionId")
+                .and_then(|value| value.as_str())
+            {
+                Some(token) => token.to_string(),
+                None => {
+                    let _ = login_result_tx.send(LoginResult::Failure {
+                        message: "No session ID in login response".to_string(),
+                    });
+                    return;
+                }
+            };
+
             let _ = login_result_tx.send(LoginResult::Success {
                 email: email_clone,
                 password: password_clone,
                 workspace_id: workspace_id_clone,
                 base_url: base_url_clone,
+                session_token,
             });
         });
     }
@@ -330,6 +364,7 @@ impl ArenaApp {
                     password,
                     workspace_id,
                     base_url,
+                    session_token,
                 } => {
                     let credentials = Credentials {
                         email,
@@ -337,7 +372,7 @@ impl ArenaApp {
                         workspace_id,
                         base_url,
                     };
-                    self.spawn_arena_worker(&credentials);
+                    self.spawn_arena_worker(&credentials, session_token);
                     self.credentials = Some(credentials);
                     self.spawn_cli_worker();
                     self.ctx.send(BackendEvent::LoginSuccess {
@@ -365,7 +400,7 @@ impl ArenaApp {
         self.cli_cmd_rx = Some(new_cmd_rx);
     }
 
-    fn spawn_arena_worker(&mut self, credentials: &Credentials) {
+    fn spawn_arena_worker(&mut self, credentials: &Credentials, initial_token: String) {
         let (arena_req_tx, arena_req_rx) = mpsc::channel::<(u32, ArenaMethod)>();
         let (file_req_tx, file_req_rx) = mpsc::channel::<FileDownloadRequest>();
 
@@ -388,7 +423,7 @@ impl ArenaApp {
                 Err(_) => return,
             };
 
-            let mut session_token: Option<String> = None;
+            let mut session_token: Option<String> = Some(initial_token);
 
             let do_login = |client: &reqwest::blocking::Client| -> Result<String, String> {
                 let mut body = serde_json::json!({
