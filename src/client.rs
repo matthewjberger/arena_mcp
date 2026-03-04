@@ -6,48 +6,91 @@ use tokio::sync::Mutex;
 
 use crate::types::*;
 
-pub(crate) struct ArenaClient {
-    http: Client,
-    base_url: String,
+struct ArenaCredentials {
     email: String,
     password: String,
     workspace_id: Option<i64>,
+    base_url: String,
+}
+
+pub(crate) struct ArenaClient {
+    http: Client,
+    credentials: Mutex<Option<ArenaCredentials>>,
     session: Mutex<Option<String>>,
 }
 
 impl ArenaClient {
-    pub(crate) fn from_env() -> Result<Self> {
-        let email = std::env::var("ARENA_EMAIL")
-            .map_err(|_| anyhow!("ARENA_EMAIL environment variable not set"))?;
-        let password = std::env::var("ARENA_PASSWORD")
-            .map_err(|_| anyhow!("ARENA_PASSWORD environment variable not set"))?;
-        let workspace_id = match std::env::var("ARENA_WORKSPACE_ID") {
-            Ok(value) if !value.is_empty() => Some(
-                value
-                    .parse::<i64>()
-                    .map_err(|_| anyhow!("ARENA_WORKSPACE_ID must be a valid integer, got: {value}"))?,
-            ),
-            _ => None,
-        };
-        let base_url = std::env::var("ARENA_BASE_URL")
-            .unwrap_or_else(|_| "https://api.arenasolutions.com/v1".to_string());
-
+    pub(crate) fn new() -> Result<Self> {
+        let credentials = Self::credentials_from_env();
         Ok(Self {
             http: Client::builder().timeout(Duration::from_secs(30)).build()?,
-            base_url,
-            email,
-            password,
-            workspace_id,
+            credentials: Mutex::new(credentials),
             session: Mutex::new(None),
         })
     }
 
-    async fn login(&self) -> Result<String> {
-        let url = format!("{}/login", self.base_url);
+    fn credentials_from_env() -> Option<ArenaCredentials> {
+        let email = std::env::var("ARENA_EMAIL").ok()?;
+        let password = std::env::var("ARENA_PASSWORD").ok()?;
+        let workspace_id = std::env::var("ARENA_WORKSPACE_ID")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .and_then(|value| value.parse::<i64>().ok());
+        let base_url = std::env::var("ARENA_BASE_URL")
+            .unwrap_or_else(|_| "https://api.arenasolutions.com/v1".to_string());
+        Some(ArenaCredentials {
+            email,
+            password,
+            workspace_id,
+            base_url,
+        })
+    }
+
+    pub(crate) async fn authenticate(
+        &self,
+        email: &str,
+        password: &str,
+        workspace_id: Option<i64>,
+        base_url: Option<&str>,
+    ) -> Result<LoginResponse> {
+        let base_url = base_url.unwrap_or("https://api.arenasolutions.com/v1");
+        let url = format!("{base_url}/login");
         let body = LoginRequest {
-            email: self.email.clone(),
-            password: self.password.clone(),
-            workspace_id: self.workspace_id,
+            email: email.to_string(),
+            password: password.to_string(),
+            workspace_id,
+        };
+        let response = self.http.post(&url).json(&body).send().await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Login failed ({}): {}", status, text));
+        }
+        let login: LoginResponse = response.json().await?;
+        *self.session.lock().await = Some(login.arena_session_id.clone());
+        *self.credentials.lock().await = Some(ArenaCredentials {
+            email: email.to_string(),
+            password: password.to_string(),
+            workspace_id,
+            base_url: base_url.to_string(),
+        });
+        Ok(login)
+    }
+
+    async fn do_login(&self) -> Result<String> {
+        let (url, body) = {
+            let guard = self.credentials.lock().await;
+            let credentials = guard
+                .as_ref()
+                .ok_or_else(|| anyhow!("Not logged in. Use the login tool first with your Arena email, password, and optional workspace ID."))?;
+            (
+                format!("{}/login", credentials.base_url),
+                LoginRequest {
+                    email: credentials.email.clone(),
+                    password: credentials.password.clone(),
+                    workspace_id: credentials.workspace_id,
+                },
+            )
         };
         let response = self.http.post(&url).json(&body).send().await?;
         if !response.status().is_success() {
@@ -60,12 +103,16 @@ impl ArenaClient {
     }
 
     pub(crate) async fn logout(&self) {
+        let base_url = {
+            let credentials = self.credentials.lock().await;
+            credentials.as_ref().map(|cred| cred.base_url.clone())
+        };
         let token = {
             let session = self.session.lock().await;
             session.clone()
         };
-        if let Some(token) = token {
-            let url = format!("{}/login", self.base_url);
+        if let (Some(base_url), Some(token)) = (base_url, token) {
+            let url = format!("{base_url}/login");
             let _ = self
                 .http
                 .put(&url)
@@ -73,14 +120,18 @@ impl ArenaClient {
                 .send()
                 .await;
         }
+        *self.session.lock().await = None;
+        *self.credentials.lock().await = None;
     }
 
     async fn ensure_session(&self) -> Result<String> {
-        let mut session = self.session.lock().await;
+        let session = self.session.lock().await;
         if let Some(token) = session.as_ref() {
             return Ok(token.clone());
         }
-        let token = self.login().await?;
+        drop(session);
+        let token = self.do_login().await?;
+        let mut session = self.session.lock().await;
         *session = Some(token.clone());
         Ok(token)
     }
@@ -90,6 +141,13 @@ impl ArenaClient {
         if session.as_deref() == Some(stale_token) {
             *session = None;
         }
+    }
+
+    fn base_url(&self, credentials: &Option<ArenaCredentials>) -> Result<String> {
+        credentials
+            .as_ref()
+            .map(|cred| cred.base_url.clone())
+            .ok_or_else(|| anyhow!("Not logged in. Use the login tool first."))
     }
 
     async fn send_with_auth(
@@ -121,7 +179,8 @@ impl ArenaClient {
     }
 
     async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url, path);
+        let base_url = self.base_url(&*self.credentials.lock().await)?;
+        let url = format!("{base_url}{path}");
         let response = self
             .send_with_auth(|token| {
                 self.http
@@ -134,7 +193,8 @@ impl ArenaClient {
     }
 
     async fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url, path);
+        let base_url = self.base_url(&*self.credentials.lock().await)?;
+        let url = format!("{base_url}{path}");
         let response = self
             .send_with_auth(|token| {
                 self.http
@@ -148,7 +208,8 @@ impl ArenaClient {
     }
 
     async fn put(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url, path);
+        let base_url = self.base_url(&*self.credentials.lock().await)?;
+        let url = format!("{base_url}{path}");
         let response = self
             .send_with_auth(|token| {
                 self.http
@@ -162,13 +223,10 @@ impl ArenaClient {
     }
 
     async fn delete(&self, path: &str) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url, path);
+        let base_url = self.base_url(&*self.credentials.lock().await)?;
+        let url = format!("{base_url}{path}");
         let response = self
-            .send_with_auth(|token| {
-                self.http
-                    .delete(&url)
-                    .header("arena_session_id", token)
-            })
+            .send_with_auth(|token| self.http.delete(&url).header("arena_session_id", token))
             .await?;
         let status = response.status();
         let bytes = response.bytes().await?;
@@ -179,7 +237,8 @@ impl ArenaClient {
     }
 
     async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, String)> {
-        let url = format!("{}{}", self.base_url, path);
+        let base_url = self.base_url(&*self.credentials.lock().await)?;
+        let url = format!("{base_url}{path}");
         let response = self
             .send_with_auth(|token| self.http.get(&url).header("arena_session_id", token))
             .await?;

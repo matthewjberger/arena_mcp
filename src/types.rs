@@ -436,6 +436,20 @@ pub struct FileContent {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct LoginParams {
+    #[schemars(description = "Arena account email address")]
+    pub email: String,
+    #[schemars(description = "Arena account password")]
+    pub password: String,
+    #[schemars(
+        description = "Numeric workspace ID (required if the account has multiple workspaces)"
+    )]
+    pub workspace_id: Option<i64>,
+    #[schemars(description = "Arena API base URL (default: https://api.arenasolutions.com/v1)")]
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SearchItemsParams {
     #[schemars(description = "Filter by item number (supports trailing * wildcard)")]
     pub number: Option<String>,

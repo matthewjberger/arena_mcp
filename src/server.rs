@@ -46,6 +46,23 @@ fn to_mcp_error(error: anyhow::Error) -> McpError {
 #[tool_router]
 impl ArenaServer {
     #[tool(
+        description = "Log in to Arena PLM. Must be called before using any other tools, unless credentials were provided via environment variables. Ask the user for their email and password if not provided."
+    )]
+    async fn login(&self, params: Parameters<LoginParams>) -> Result<String, McpError> {
+        let result = self
+            .client
+            .authenticate(
+                &params.0.email,
+                &params.0.password,
+                params.0.workspace_id,
+                params.0.base_url.as_deref(),
+            )
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(
         description = "Search for items in Arena PLM. Supports filtering by name, number, description, category, and lifecycle phase. Use trailing * wildcard for partial matches."
     )]
     async fn search_items(
@@ -776,14 +793,14 @@ impl ServerHandler for ArenaServer {
                 icons: None,
             },
             instructions: Some(
-                "Arena PLM MCP server. Query and modify items, BOMs, changes, suppliers, quality processes, requests, tickets, training plans, and settings in Arena Solutions. Requires ARENA_EMAIL and ARENA_PASSWORD environment variables.".to_string(),
+                "Arena PLM MCP server. Query and modify items, BOMs, changes, suppliers, quality processes, requests, tickets, training plans, and settings in Arena Solutions. Call the login tool first with the user's email and password to authenticate. If ARENA_EMAIL and ARENA_PASSWORD environment variables are set, login happens automatically.".to_string(),
             ),
         }
     }
 }
 
 pub async fn serve() -> anyhow::Result<()> {
-    let client = ArenaClient::from_env()?;
+    let client = ArenaClient::new()?;
     let server = ArenaServer::new(client);
     let logout_client = Arc::clone(&server.client);
     let transport = stdio();
