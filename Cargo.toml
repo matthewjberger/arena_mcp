@@ -14,13 +14,13 @@ name = "arena"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.43", features = ["full"] }
-rmcp = { version = "0.14", features = ["server", "transport-io"] }
-reqwest = { version = "0.12", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 anyhow = "1.0"
 base64 = "0.22"
+reqwest = { version = "0.12", features = ["json"] }
+rmcp = { version = "0.14", features = ["server", "transport-io"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.43", features = ["full"] }
 
 [profile.dev]
 opt-level = 1
