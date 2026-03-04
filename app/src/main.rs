@@ -64,11 +64,24 @@ enum FileResult {
     Error(FileDownloadError),
 }
 
+enum LoginResult {
+    Success {
+        email: String,
+        password: String,
+        workspace_id: Option<String>,
+        base_url: String,
+    },
+    Failure {
+        message: String,
+    },
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (cli_cmd_tx, cli_cmd_rx) = mpsc::channel::<CliCommand>();
     let (cli_event_tx, cli_event_rx) = mpsc::channel::<CliEvent>();
     let (arena_result_tx, arena_result_rx) = mpsc::channel::<(u32, ArenaResult)>();
     let (file_result_tx, file_result_rx) = mpsc::channel::<FileResult>();
+    let (login_result_tx, login_result_rx) = mpsc::channel::<LoginResult>();
 
     let port = serve_embedded_dir(&DIST);
 
@@ -86,6 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         file_tx: None,
         file_result_tx,
         file_result_rx,
+        login_result_tx,
+        login_result_rx,
         credentials: None,
         write_mode: false,
     })?;
@@ -107,6 +122,8 @@ struct ArenaApp {
     file_tx: Option<mpsc::Sender<FileDownloadRequest>>,
     file_result_tx: mpsc::Sender<FileResult>,
     file_result_rx: mpsc::Receiver<FileResult>,
+    login_result_tx: mpsc::Sender<LoginResult>,
+    login_result_rx: mpsc::Receiver<LoginResult>,
     credentials: Option<Credentials>,
     write_mode: bool,
 }
@@ -122,6 +139,7 @@ impl State for ArenaApp {
 
     fn ui(&mut self, world: &mut World, ctx: &egui::Context) {
         self.process_frontend_commands();
+        self.forward_login_results();
         self.forward_cli_events();
         self.forward_arena_results();
         self.forward_file_results();
@@ -235,68 +253,105 @@ impl ArenaApp {
             .filter(|url| !url.is_empty())
             .unwrap_or_else(|| "https://api.arenasolutions.com/v1".to_string());
 
-        let login_url = format!("{}/login", base_url);
-        let workspace_id_i64 = workspace_id
-            .as_ref()
-            .and_then(|workspace| workspace.parse::<i64>().ok());
-
-        let mut body = serde_json::json!({
-            "email": email,
-            "password": password,
-        });
-        if let Some(workspace) = workspace_id_i64 {
-            body["workspaceId"] = serde_json::json!(workspace);
-        }
-
-        let client = match reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-        {
-            Ok(client) => client,
-            Err(error) => {
-                self.ctx.send(BackendEvent::LoginFailure {
-                    message: format!("HTTP client error: {error}"),
-                });
-                return;
-            }
-        };
-
-        let response = match client.post(&login_url).json(&body).send() {
-            Ok(response) => response,
-            Err(error) => {
-                self.ctx.send(BackendEvent::LoginFailure {
-                    message: format!("Connection failed: {error}"),
-                });
-                return;
-            }
-        };
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().unwrap_or_default();
+        if !base_url.starts_with("https://") {
             self.ctx.send(BackendEvent::LoginFailure {
-                message: format!("Login failed ({status}): {text}"),
+                message: "Base URL must use HTTPS".to_string(),
             });
             return;
         }
 
-        let credentials = Credentials {
-            email,
-            password,
-            workspace_id,
-            base_url,
-        };
+        let login_result_tx = self.login_result_tx.clone();
+        let workspace_id_clone = workspace_id.clone();
+        let email_clone = email.clone();
+        let password_clone = password.clone();
+        let base_url_clone = base_url.clone();
 
-        self.spawn_arena_worker(&credentials);
-        self.credentials = Some(credentials);
-        self.spawn_cli_worker();
+        std::thread::spawn(move || {
+            let workspace_id_i64 = workspace_id_clone
+                .as_ref()
+                .and_then(|workspace| workspace.parse::<i64>().ok());
 
-        self.ctx.send(BackendEvent::LoginSuccess {
-            workspace_name: None,
+            let mut body = serde_json::json!({
+                "email": email_clone,
+                "password": password_clone,
+            });
+            if let Some(workspace) = workspace_id_i64 {
+                body["workspaceId"] = serde_json::json!(workspace);
+            }
+
+            let client = match reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+            {
+                Ok(client) => client,
+                Err(error) => {
+                    let _ = login_result_tx.send(LoginResult::Failure {
+                        message: format!("HTTP client error: {error}"),
+                    });
+                    return;
+                }
+            };
+
+            let login_url = format!("{base_url_clone}/login");
+            let response = match client.post(&login_url).json(&body).send() {
+                Ok(response) => response,
+                Err(error) => {
+                    let _ = login_result_tx.send(LoginResult::Failure {
+                        message: format!("Connection failed: {error}"),
+                    });
+                    return;
+                }
+            };
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().unwrap_or_default();
+                let _ = login_result_tx.send(LoginResult::Failure {
+                    message: format!("Login failed ({status}): {text}"),
+                });
+                return;
+            }
+
+            let _ = login_result_tx.send(LoginResult::Success {
+                email: email_clone,
+                password: password_clone,
+                workspace_id: workspace_id_clone,
+                base_url: base_url_clone,
+            });
         });
-        self.ctx.send(BackendEvent::StatusUpdate {
-            status: AgentStatus::Idle,
-        });
+    }
+
+    fn forward_login_results(&mut self) {
+        let results: Vec<LoginResult> = self.login_result_rx.try_iter().collect();
+        for result in results {
+            match result {
+                LoginResult::Success {
+                    email,
+                    password,
+                    workspace_id,
+                    base_url,
+                } => {
+                    let credentials = Credentials {
+                        email,
+                        password,
+                        workspace_id,
+                        base_url,
+                    };
+                    self.spawn_arena_worker(&credentials);
+                    self.credentials = Some(credentials);
+                    self.spawn_cli_worker();
+                    self.ctx.send(BackendEvent::LoginSuccess {
+                        workspace_name: None,
+                    });
+                    self.ctx.send(BackendEvent::StatusUpdate {
+                        status: AgentStatus::Idle,
+                    });
+                }
+                LoginResult::Failure { message } => {
+                    self.ctx.send(BackendEvent::LoginFailure { message });
+                }
+            }
+        }
     }
 
     fn handle_logout(&mut self) {
