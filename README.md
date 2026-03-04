@@ -174,6 +174,10 @@ cd app
 just run
 ```
 
+### Logs
+
+Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_1772606218.log`). These contain tracing output for login events, Arena API calls, Claude CLI interactions, tool use, and errors. Useful for debugging authentication issues or inspecting what the AI agent is doing.
+
 ### Architecture
 
 - **Backend** (`app/src/main.rs`): Nightshade desktop host with egui + webview + Claude CLI integration
@@ -181,6 +185,7 @@ just run
 - **Protocol** (`app/protocol/`): `#![no_std]` shared types for frontend-backend IPC
 - **Arena API proxy**: Backend spawns a worker thread for direct Arena API access (browse views bypass Claude)
 - **Claude CLI worker**: Spawned after login with credentials passed via environment variables to the MCP server
+- **Embedded MCP server**: The arena MCP server is compiled into the binary and launched via `--mcp` flag when Claude needs it (no separate binary required)
 
 ## License
 

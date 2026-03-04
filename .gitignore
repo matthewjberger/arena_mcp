@@ -2,3 +2,4 @@
 /app/target
 /app/site/dist
 /app/site/node_modules
+/app/site/logs

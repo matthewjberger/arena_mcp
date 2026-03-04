@@ -141,6 +141,13 @@ impl State for ArenaApp {
         "Arena PLM"
     }
 
+    fn log_config(&self) -> nightshade::prelude::LogConfig {
+        nightshade::prelude::LogConfig {
+            default_filter: "info,wgpu_hal=error,wgpu_core=error,naga=error".to_string(),
+            ..Default::default()
+        }
+    }
+
     fn initialize(&mut self, world: &mut World) {
         world.resources.user_interface.enabled = true;
         tracing::info!("arena app initialized");
