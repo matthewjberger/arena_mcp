@@ -996,4 +996,269 @@ impl ArenaClient {
         let value = self.get("/settings/items/numberformats", &[]).await?;
         serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
+
+    pub(crate) async fn get_bom_substitutes(
+        &self,
+        item_guid: &str,
+        bom_line_guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/items/{item_guid}/bom/{bom_line_guid}/substitutes");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_item_history(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/items/{guid}/history");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_item_future_changes(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/items/{guid}/future-changes");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_item_thumbnail(&self, guid: &str) -> Result<FileContent> {
+        let path = format!("/items/{guid}/thumbnail");
+        let (bytes, content_type) = self.get_bytes(&path).await?;
+        if content_type.starts_with("text/")
+            || content_type.contains("json")
+            || content_type.contains("xml")
+        {
+            Ok(FileContent {
+                content_type,
+                encoding: "text".to_string(),
+                data: String::from_utf8_lossy(&bytes).into_owned(),
+                size_bytes: bytes.len(),
+            })
+        } else {
+            use base64::Engine;
+            Ok(FileContent {
+                content_type,
+                encoding: "base64".to_string(),
+                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                size_bytes: bytes.len(),
+            })
+        }
+    }
+
+    pub(crate) async fn get_change_history(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/changes/{guid}/history");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_change_alerts(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/changes/{guid}/alerts");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_change_implementation_tasks(
+        &self,
+        guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/changes/{guid}/implementation-tasks");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_change_implementation_task(
+        &self,
+        change_guid: &str,
+        task_guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/changes/{change_guid}/implementation-tasks/{task_guid}");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_implementation_task_notes(
+        &self,
+        change_guid: &str,
+        task_guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/changes/{change_guid}/implementation-tasks/{task_guid}/notes");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_file_content(&self, guid: &str) -> Result<FileContent> {
+        let path = format!("/files/{guid}/content");
+        let (bytes, content_type) = self.get_bytes(&path).await?;
+        if content_type.starts_with("text/")
+            || content_type.contains("json")
+            || content_type.contains("xml")
+        {
+            Ok(FileContent {
+                content_type,
+                encoding: "text".to_string(),
+                data: String::from_utf8_lossy(&bytes).into_owned(),
+                size_bytes: bytes.len(),
+            })
+        } else {
+            use base64::Engine;
+            Ok(FileContent {
+                content_type,
+                encoding: "base64".to_string(),
+                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                size_bytes: bytes.len(),
+            })
+        }
+    }
+
+    pub(crate) async fn get_request_files(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/requests/{guid}/files");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_request_changes(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/requests/{guid}/changes");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_item(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/supplieritems/{guid}");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_addresses(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/suppliers/{guid}/addresses");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_phone_numbers(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/suppliers/{guid}/phone-numbers");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_files(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/suppliers/{guid}/files");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_approval_status(
+        &self,
+        guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/suppliers/{guid}/approval-status");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_item_files(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/supplieritems/{guid}/files");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_item_compliance(
+        &self,
+        guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/supplieritems/{guid}/compliance");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_supplier_item_sourcing(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/supplieritems/{guid}/sourcing");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_quality_process_step(
+        &self,
+        process_guid: &str,
+        step_guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/qualityprocesses/{process_guid}/steps/{step_guid}");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_quality_step_decisions(
+        &self,
+        process_guid: &str,
+        step_guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/qualityprocesses/{process_guid}/steps/{step_guid}/decisions");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_quality_step_affected_objects(
+        &self,
+        process_guid: &str,
+        step_guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/qualityprocesses/{process_guid}/steps/{step_guid}/objects");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_ticket_items(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/tickets/{guid}/items");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_ticket_changes(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/tickets/{guid}/changes");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_ticket_files(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/tickets/{guid}/files");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_training_plan_users(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/trainingplans/{guid}/users");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_training_plan_items(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/trainingplans/{guid}/items");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_training_plan_files(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/trainingplans/{guid}/files");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_file_categories(&self) -> Result<serde_json::Value> {
+        self.get("/settings/files/categories", &[]).await
+    }
+
+    pub(crate) async fn get_change_category_attributes(
+        &self,
+        guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/settings/changes/categories/{guid}/attributes");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_change_category_routings(
+        &self,
+        guid: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!("/settings/changes/categories/{guid}/routings");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_request_categories(&self) -> Result<serde_json::Value> {
+        self.get("/settings/requests/categories", &[]).await
+    }
+
+    pub(crate) async fn get_item_attributes(&self) -> Result<serde_json::Value> {
+        self.get("/settings/items/attributes", &[]).await
+    }
+
+    pub(crate) async fn get_bom_attributes(&self) -> Result<serde_json::Value> {
+        self.get("/settings/bom/attributes", &[]).await
+    }
+
+    pub(crate) async fn get_users(&self) -> Result<serde_json::Value> {
+        self.get("/settings/users", &[]).await
+    }
+
+    pub(crate) async fn get_user(&self, guid: &str) -> Result<serde_json::Value> {
+        let path = format!("/settings/users/{guid}");
+        self.get(&path, &[]).await
+    }
+
+    pub(crate) async fn get_user_groups(&self) -> Result<serde_json::Value> {
+        self.get("/settings/usergroups", &[]).await
+    }
+
+    pub(crate) async fn get_api_usage(&self) -> Result<serde_json::Value> {
+        self.get("/settings/recentactivities/apiusages", &[]).await
+    }
 }

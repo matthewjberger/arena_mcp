@@ -777,6 +777,499 @@ impl ArenaServer {
             .map_err(to_mcp_error)?;
         to_json(&result)
     }
+
+    #[tool(
+        description = "Get substitute parts for a BOM line. Returns alternate components that can replace this line item."
+    )]
+    async fn get_bom_substitutes(
+        &self,
+        params: Parameters<GetBomSubstitutesParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_bom_substitutes(&params.0.item_guid, &params.0.bom_line_guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(
+        description = "Get the history/audit trail for an item. Shows all modifications over time."
+    )]
+    async fn get_item_history(
+        &self,
+        params: Parameters<GetItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_item_history(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get pending/future changes (ECOs) that will affect an item.")]
+    async fn get_item_future_changes(
+        &self,
+        params: Parameters<GetItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_item_future_changes(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(
+        description = "Get the thumbnail image for an item. Returns JSON with content_type, encoding (text or base64), data, and size_bytes."
+    )]
+    async fn get_item_thumbnail(
+        &self,
+        params: Parameters<GetItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_item_thumbnail(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get the history/audit trail for a change order.")]
+    async fn get_change_history(
+        &self,
+        params: Parameters<GetChangeParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_change_history(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(
+        description = "Get alerts (errors/warnings) for a change order. Shows validation issues before submission."
+    )]
+    async fn get_change_alerts(
+        &self,
+        params: Parameters<GetChangeParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_change_alerts(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get implementation tasks for a change order.")]
+    async fn get_change_implementation_tasks(
+        &self,
+        params: Parameters<GetChangeParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_change_implementation_tasks(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get a single implementation task for a change order.")]
+    async fn get_change_implementation_task(
+        &self,
+        params: Parameters<GetChangeImplementationTaskParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_change_implementation_task(&params.0.change_guid, &params.0.task_guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get notes on an implementation task for a change order.")]
+    async fn get_implementation_task_notes(
+        &self,
+        params: Parameters<GetImplementationTaskNotesParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_implementation_task_notes(&params.0.change_guid, &params.0.task_guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(
+        description = "Download file content by file GUID. Returns JSON with content_type, encoding (text or base64), data, and size_bytes. Binary files are base64-encoded."
+    )]
+    async fn get_file_content(
+        &self,
+        params: Parameters<GetFileParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_file_content(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get files attached to a request.")]
+    async fn get_request_files(
+        &self,
+        params: Parameters<GetRequestParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_request_files(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get changes linked to a request.")]
+    async fn get_request_changes(
+        &self,
+        params: Parameters<GetRequestParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_request_changes(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get full detail for a supplier item by GUID.")]
+    async fn get_supplier_item(
+        &self,
+        params: Parameters<GetSupplierItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_item(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get addresses for a supplier.")]
+    async fn get_supplier_addresses(
+        &self,
+        params: Parameters<GetSupplierParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_addresses(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get phone numbers for a supplier.")]
+    async fn get_supplier_phone_numbers(
+        &self,
+        params: Parameters<GetSupplierParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_phone_numbers(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get files associated with a supplier.")]
+    async fn get_supplier_files(
+        &self,
+        params: Parameters<GetSupplierParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_files(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get the approval status for a supplier.")]
+    async fn get_supplier_approval_status(
+        &self,
+        params: Parameters<GetSupplierParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_approval_status(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get files associated with a supplier item.")]
+    async fn get_supplier_item_files(
+        &self,
+        params: Parameters<GetSupplierItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_item_files(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get compliance requirements for a supplier item.")]
+    async fn get_supplier_item_compliance(
+        &self,
+        params: Parameters<GetSupplierItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_item_compliance(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get sourcing relationships for a supplier item.")]
+    async fn get_supplier_item_sourcing(
+        &self,
+        params: Parameters<GetSupplierItemParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_supplier_item_sourcing(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get a single step from a quality process.")]
+    async fn get_quality_process_step(
+        &self,
+        params: Parameters<GetQualityProcessStepParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_quality_process_step(&params.0.process_guid, &params.0.step_guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get sign-off decisions for a quality process step.")]
+    async fn get_quality_step_decisions(
+        &self,
+        params: Parameters<GetQualityStepDecisionsParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_quality_step_decisions(&params.0.process_guid, &params.0.step_guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get objects affected by a quality process step.")]
+    async fn get_quality_step_affected_objects(
+        &self,
+        params: Parameters<GetQualityStepAffectedObjectsParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_quality_step_affected_objects(&params.0.process_guid, &params.0.step_guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get items linked to a ticket.")]
+    async fn get_ticket_items(
+        &self,
+        params: Parameters<GetTicketParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_ticket_items(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get changes linked to a ticket.")]
+    async fn get_ticket_changes(
+        &self,
+        params: Parameters<GetTicketParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_ticket_changes(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get files attached to a ticket.")]
+    async fn get_ticket_files(
+        &self,
+        params: Parameters<GetTicketParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_ticket_files(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get users assigned to a training plan.")]
+    async fn get_training_plan_users(
+        &self,
+        params: Parameters<GetTrainingPlanParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_training_plan_users(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get items linked to a training plan.")]
+    async fn get_training_plan_items(
+        &self,
+        params: Parameters<GetTrainingPlanParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_training_plan_items(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get files attached to a training plan.")]
+    async fn get_training_plan_files(
+        &self,
+        params: Parameters<GetTrainingPlanParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_training_plan_files(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get file categories configured in the Arena workspace.")]
+    async fn get_file_categories(
+        &self,
+        _params: Parameters<EmptyParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_file_categories()
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get attributes defined for a change category.")]
+    async fn get_change_category_attributes(
+        &self,
+        params: Parameters<GetChangeCategorySettingsParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_change_category_attributes(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get routing configurations for a change category.")]
+    async fn get_change_category_routings(
+        &self,
+        params: Parameters<GetChangeCategorySettingsParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_change_category_routings(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get request categories configured in the Arena workspace.")]
+    async fn get_request_categories(
+        &self,
+        _params: Parameters<EmptyParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_request_categories()
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get item spec attribute definitions configured in the Arena workspace.")]
+    async fn get_item_attributes(
+        &self,
+        _params: Parameters<EmptyParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_item_attributes()
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get BOM attribute definitions configured in the Arena workspace.")]
+    async fn get_bom_attributes(
+        &self,
+        _params: Parameters<EmptyParams>,
+    ) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_bom_attributes()
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get workspace users.")]
+    async fn get_users(&self, _params: Parameters<EmptyParams>) -> Result<String, McpError> {
+        let result = self.client.get_users().await.map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get a single workspace user by GUID.")]
+    async fn get_user(&self, params: Parameters<GetUserParams>) -> Result<String, McpError> {
+        let result = self
+            .client
+            .get_user(&params.0.guid)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get user groups configured in the Arena workspace.")]
+    async fn get_user_groups(&self, _params: Parameters<EmptyParams>) -> Result<String, McpError> {
+        let result = self.client.get_user_groups().await.map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(description = "Get API usage logs for the Arena workspace.")]
+    async fn get_api_usage(&self, _params: Parameters<EmptyParams>) -> Result<String, McpError> {
+        let result = self.client.get_api_usage().await.map_err(to_mcp_error)?;
+        to_json(&result)
+    }
 }
 
 #[tool_handler]

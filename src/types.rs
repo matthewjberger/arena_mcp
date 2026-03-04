@@ -937,3 +937,69 @@ pub struct GetTrainingPlanRecordsParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct EmptyParams {}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetBomSubstitutesParams {
+    #[schemars(description = "The GUID of the parent item")]
+    pub item_guid: String,
+    #[schemars(description = "The GUID of the BOM line")]
+    pub bom_line_guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetChangeImplementationTaskParams {
+    #[schemars(description = "The GUID of the change")]
+    pub change_guid: String,
+    #[schemars(description = "The GUID of the implementation task")]
+    pub task_guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetImplementationTaskNotesParams {
+    #[schemars(description = "The GUID of the change")]
+    pub change_guid: String,
+    #[schemars(description = "The GUID of the implementation task")]
+    pub task_guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetSupplierItemParams {
+    #[schemars(description = "The GUID of the supplier item")]
+    pub guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetQualityProcessStepParams {
+    #[schemars(description = "The GUID of the quality process")]
+    pub process_guid: String,
+    #[schemars(description = "The GUID of the step")]
+    pub step_guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetQualityStepDecisionsParams {
+    #[schemars(description = "The GUID of the quality process")]
+    pub process_guid: String,
+    #[schemars(description = "The GUID of the step")]
+    pub step_guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetQualityStepAffectedObjectsParams {
+    #[schemars(description = "The GUID of the quality process")]
+    pub process_guid: String,
+    #[schemars(description = "The GUID of the step")]
+    pub step_guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetChangeCategorySettingsParams {
+    #[schemars(description = "The GUID of the change category")]
+    pub guid: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetUserParams {
+    #[schemars(description = "The GUID of the user")]
+    pub guid: String,
+}
