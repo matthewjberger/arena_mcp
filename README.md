@@ -187,7 +187,7 @@ just run
 
 ### Logs
 
-Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_1772606218.log`). Logs include login events, Arena API calls, Claude CLI interactions, tool use, and errors. GPU-level noise (wgpu, naga) is filtered out so logs stay readable.
+Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_2026-03-04_14-30-00.log`). Logs include login events, Arena API calls, Claude CLI interactions, tool use, and errors. GPU-level noise (wgpu, naga) is filtered out so logs stay readable.
 
 ### Architecture
 
