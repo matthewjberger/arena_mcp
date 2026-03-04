@@ -8,6 +8,7 @@ pub enum View {
     Bom,
     Changes,
     Settings,
+    Logs,
 }
 
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub struct AppState {
     pub logged_in: RwSignal<bool>,
     pub write_mode: RwSignal<bool>,
     pub session_id: RwSignal<Option<String>>,
+    pub log_content: RwSignal<String>,
 }
 
 impl AppState {
@@ -27,6 +29,7 @@ impl AppState {
             logged_in: RwSignal::new(false),
             write_mode: RwSignal::new(false),
             session_id: RwSignal::new(None),
+            log_content: RwSignal::new(String::new()),
         }
     }
 }

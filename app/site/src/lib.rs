@@ -2,6 +2,7 @@ mod arena;
 mod browse;
 mod chat;
 mod login;
+mod logs;
 mod settings;
 mod state;
 
@@ -11,6 +12,7 @@ use leptos::prelude::*;
 use crate::browse::{BomTree, ChangesBrowse, ItemsBrowse};
 use crate::chat::ChatView;
 use crate::login::LoginScreen;
+use crate::logs::LogsView;
 use crate::settings::SettingsView;
 use crate::state::{
     AppState, ChatState, LoginState, MessageRole, StatusDisplay, ToolUseBlock, View,
@@ -143,6 +145,9 @@ pub fn App() -> impl IntoView {
                 BackendEvent::WriteModeChanged { enabled } => {
                     app.write_mode.set(enabled);
                 }
+                BackendEvent::LogContent { text } => {
+                    app.log_content.set(text);
+                }
             });
         }
     });
@@ -205,6 +210,7 @@ fn MainApp() -> impl IntoView {
                     {sidebar_btn("BOMs", "🌳", View::Bom)}
                     {sidebar_btn("Changes", "📋", View::Changes)}
                     {sidebar_btn("Settings", "⚙️", View::Settings)}
+                    {sidebar_btn("Logs", "📄", View::Logs)}
                 </div>
                 <div class="px-3 py-2 border-t border-[#30363d] text-xs text-[#484f58]">
                     {move || app.session_id.get().map(|id| {
@@ -221,6 +227,7 @@ fn MainApp() -> impl IntoView {
                     View::Bom => view! { <BomTree /> }.into_any(),
                     View::Changes => view! { <ChangesBrowse /> }.into_any(),
                     View::Settings => view! { <SettingsView /> }.into_any(),
+                    View::Logs => view! { <LogsView /> }.into_any(),
                 }}
             </div>
         </div>

@@ -91,7 +91,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (login_result_tx, login_result_rx) = mpsc::channel::<LoginResult>();
 
     let port = serve_embedded_dir(&DIST);
-    tracing::info!(port, "embedded site server started");
+
+    let log_config = nightshade::prelude::LogConfig {
+        default_filter: "info,wgpu_hal=error,wgpu_core=error,naga=error".to_string(),
+        ..Default::default()
+    };
+    let log_file_path =
+        std::path::PathBuf::from(&log_config.directory).join(log_file_name("Arena PLM", &log_config));
 
     launch(ArenaApp {
         port,
@@ -111,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         login_result_rx,
         credentials: None,
         write_mode: false,
+        log_file_path,
     })?;
 
     Ok(())
@@ -134,6 +141,7 @@ struct ArenaApp {
     login_result_rx: mpsc::Receiver<LoginResult>,
     credentials: Option<Credentials>,
     write_mode: bool,
+    log_file_path: std::path::PathBuf,
 }
 
 impl State for ArenaApp {
@@ -279,6 +287,22 @@ impl ArenaApp {
                     self.write_mode = enabled;
                     self.respawn_cli_worker();
                     self.ctx.send(BackendEvent::WriteModeChanged { enabled });
+                }
+                FrontendCommand::ReadLogs => {
+                    let text = std::fs::read_to_string(&self.log_file_path)
+                        .unwrap_or_else(|error| format!("Failed to read log file: {error}"));
+                    self.ctx.send(BackendEvent::LogContent { text });
+                }
+                FrontendCommand::OpenLogFile => {
+                    let path = rfd::FileDialog::new()
+                        .set_title("Open Log File")
+                        .add_filter("Log files", &["log", "txt"])
+                        .pick_file();
+                    if let Some(path) = path {
+                        let text = std::fs::read_to_string(&path)
+                            .unwrap_or_else(|error| format!("Failed to read file: {error}"));
+                        self.ctx.send(BackendEvent::LogContent { text });
+                    }
                 }
             }
         }

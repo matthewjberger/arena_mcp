@@ -176,6 +176,7 @@ The `app/` directory contains a standalone desktop application for interacting w
 - **File downloads**: Download files attached to items directly from the browser
 - **Read-only mode**: Write operations (create, update, delete) are blocked by default; enable in Settings
 - **Saved searches**: Save and recall search queries (stored in browser localStorage)
+- **Logs viewer**: View the current session's log in-app, refresh on demand, or open an external log file for debugging
 
 ### Running
 

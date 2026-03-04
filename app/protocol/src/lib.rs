@@ -83,6 +83,8 @@ pub enum FrontendCommand {
     SetWriteMode {
         enabled: bool,
     },
+    ReadLogs,
+    OpenLogFile,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -144,6 +146,9 @@ pub enum BackendEvent {
     },
     WriteModeChanged {
         enabled: bool,
+    },
+    LogContent {
+        text: String,
     },
 }
 
