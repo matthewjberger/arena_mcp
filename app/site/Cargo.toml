@@ -10,7 +10,7 @@ console_log = "1"
 log = "0.4"
 console_error_panic_hook = "0.1"
 arena_app_protocol = { path = "../protocol" }
-nightshade = { git = "https://github.com/matthewjberger/nightshade.git", default-features = false, features = [
+nightshade = { version = "0.8.0", default-features = false, features = [
     "webview",
 ] }
 web-sys = { version = "0.3", features = [

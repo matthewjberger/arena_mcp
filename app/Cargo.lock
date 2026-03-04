@@ -3130,7 +3130,9 @@ checksum = "60993920e071b0c9b66f14e2b32740a4e27ffc82854dcd72035887f336a09a28"
 
 [[package]]
 name = "nightshade"
-version = "0.7.0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "405d5c8c9270ec2898dda95c044dbbbfb48a5e0aa5f2530b259dfc7dfb0c3a84"
 dependencies = [
  "base64",
  "bitflags 2.11.0",
