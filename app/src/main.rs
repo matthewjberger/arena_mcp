@@ -222,10 +222,10 @@ impl ArenaApp {
                     model,
                 } => {
                     tracing::info!(
-                        session_id = ?session_id,
-                        model = ?model,
-                        %prompt,
-                        "prompt sent to claude"
+                        "━━━ PROMPT (session={}, model={}) ━━━\n{}",
+                        session_id.as_deref().unwrap_or("new"),
+                        model.as_deref().unwrap_or("default"),
+                        prompt,
                     );
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Thinking,
@@ -244,7 +244,7 @@ impl ArenaApp {
                     });
                 }
                 FrontendCommand::ArenaRequest { request_id, method } => {
-                    tracing::info!(request_id, ?method, "arena api request");
+                    tracing::info!("━━━ ARENA REQUEST #{} ━━━\n{:#?}", request_id, method);
                     let sent = self
                         .arena_tx
                         .as_ref()
@@ -941,7 +941,7 @@ impl ArenaApp {
                     self.ctx.send(BackendEvent::ThinkingDelta { text });
                 }
                 CliEvent::ToolUseStarted { tool_name, tool_id } => {
-                    tracing::info!(%tool_name, %tool_id, "tool use started");
+                    tracing::info!("━━━ TOOL CALL: {} ({}) ━━━", tool_name, tool_id);
                     self.accumulated_tool_input.clear();
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::UsingTool {
@@ -963,9 +963,9 @@ impl ArenaApp {
                 }
                 CliEvent::ToolUseFinished { tool_id } => {
                     tracing::info!(
-                        %tool_id,
-                        input = %self.accumulated_tool_input,
-                        "tool use finished"
+                        "━━━ TOOL RESULT ({}) ━━━\n{}",
+                        tool_id,
+                        format_json_pretty(&self.accumulated_tool_input),
                     );
                     self.accumulated_tool_input.clear();
                     self.ctx.send(BackendEvent::ToolUseFinished { tool_id });
@@ -976,16 +976,16 @@ impl ArenaApp {
                 CliEvent::TurnComplete { session_id } => {
                     if !self.accumulated_thinking.is_empty() {
                         tracing::info!(
-                            %session_id,
-                            thinking = %self.accumulated_thinking,
-                            "claude thinking"
+                            "━━━ THINKING (session={}) ━━━\n{}",
+                            session_id,
+                            self.accumulated_thinking,
                         );
                     }
                     if !self.accumulated_text.is_empty() {
                         tracing::info!(
-                            %session_id,
-                            response = %self.accumulated_text,
-                            "claude response"
+                            "━━━ RESPONSE (session={}) ━━━\n{}",
+                            session_id,
+                            self.accumulated_text,
                         );
                     }
                     self.accumulated_text.clear();
@@ -1028,9 +1028,10 @@ impl ArenaApp {
             match &result {
                 ArenaResult::Success { json } => {
                     tracing::info!(
+                        "━━━ ARENA RESPONSE #{} ({} bytes) ━━━\n{}",
                         request_id,
-                        response_len = json.len(),
-                        "arena response forwarded"
+                        json.len(),
+                        format_json_pretty(json),
                     );
                 }
                 ArenaResult::Error { message } => {
@@ -1075,4 +1076,11 @@ impl ArenaApp {
             }
         }
     }
+}
+
+fn format_json_pretty(raw: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|value| serde_json::to_string_pretty(&value).ok())
+        .unwrap_or_else(|| raw.to_string())
 }
