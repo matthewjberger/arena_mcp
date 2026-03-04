@@ -21,9 +21,14 @@ impl ArenaClient {
             .map_err(|_| anyhow!("ARENA_EMAIL environment variable not set"))?;
         let password = std::env::var("ARENA_PASSWORD")
             .map_err(|_| anyhow!("ARENA_PASSWORD environment variable not set"))?;
-        let workspace_id = std::env::var("ARENA_WORKSPACE_ID")
-            .ok()
-            .and_then(|value| value.parse().ok());
+        let workspace_id = match std::env::var("ARENA_WORKSPACE_ID") {
+            Ok(value) if !value.is_empty() => Some(
+                value
+                    .parse::<i64>()
+                    .map_err(|_| anyhow!("ARENA_WORKSPACE_ID must be a valid integer, got: {value}"))?,
+            ),
+            _ => None,
+        };
         let base_url = std::env::var("ARENA_BASE_URL")
             .unwrap_or_else(|_| "https://api.arenasolutions.com/v1".to_string());
 
@@ -122,7 +127,6 @@ impl ArenaClient {
                 self.http
                     .get(&url)
                     .header("arena_session_id", token)
-                    .header("content-type", "application/json")
                     .query(query)
             })
             .await?;
@@ -164,7 +168,6 @@ impl ArenaClient {
                 self.http
                     .delete(&url)
                     .header("arena_session_id", token)
-                    .header("content-type", "application/json")
             })
             .await?;
         let status = response.status();
@@ -172,7 +175,7 @@ impl ArenaClient {
         if status.as_u16() == 204 || bytes.is_empty() {
             return Ok(serde_json::Value::Null);
         }
-        Ok(serde_json::from_slice(&bytes)?)
+        serde_json::from_slice(&bytes).context("failed to deserialize Arena API response")
     }
 
     async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, String)> {
@@ -226,6 +229,9 @@ impl ArenaClient {
                 lifecycle_phase_guid.clone(),
             ));
         }
+        if let Some(procurement_type) = &params.procurement_type {
+            query.push(("procurementType".to_string(), procurement_type.clone()));
+        }
         if let Some(offset) = params.offset {
             query.push(("offset".to_string(), offset.to_string()));
         }
@@ -233,14 +239,14 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/items", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item(&self, guid: &str) -> Result<Item> {
         let path = format!("/items/{guid}");
         let query = vec![("responseview".to_string(), "full".to_string())];
         let value = self.get(&path, &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn create_item(&self, params: &CreateItemParams) -> Result<Item> {
@@ -260,7 +266,7 @@ impl ArenaClient {
             body["additionalAttributes"] = serde_json::json!(attrs);
         }
         let value = self.post("/items", &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn update_item(&self, params: &UpdateItemParams) -> Result<Item> {
@@ -281,7 +287,7 @@ impl ArenaClient {
         }
         let path = format!("/items/{}", params.guid);
         let value = self.put(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn delete_item(&self, guid: &str) -> Result<serde_json::Value> {
@@ -295,7 +301,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<ItemSourcingEntry>> {
         let path = format!("/items/{guid}/sourcing");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_compliance(
@@ -304,7 +310,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<ComplianceRequirement>> {
         let path = format!("/items/{guid}/compliance");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_references(
@@ -313,7 +319,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<ItemReference>> {
         let path = format!("/items/{guid}/references");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_quality(
@@ -322,7 +328,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<QualityProcess>> {
         let path = format!("/items/{guid}/quality");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn item_lifecycle_phase_change(
@@ -342,7 +348,7 @@ impl ArenaClient {
     pub(crate) async fn get_bom(&self, guid: &str) -> Result<ArenaListResponse<BomLine>> {
         let path = format!("/items/{guid}/bom");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_where_used(
@@ -351,7 +357,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<WhereUsedEntry>> {
         let path = format!("/items/{guid}/whereused");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn create_bom_line(&self, params: &CreateBomLineParams) -> Result<BomLine> {
@@ -369,7 +375,7 @@ impl ArenaClient {
         }
         let path = format!("/items/{}/bom", params.item_guid);
         let value = self.post(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn update_bom_line(&self, params: &UpdateBomLineParams) -> Result<BomLine> {
@@ -385,7 +391,7 @@ impl ArenaClient {
         }
         let path = format!("/items/{}/bom/{}", params.item_guid, params.line_guid);
         let value = self.put(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn delete_bom_line(
@@ -423,13 +429,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/changes", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_change(&self, guid: &str) -> Result<Change> {
         let path = format!("/changes/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_change_affected_items(
@@ -438,7 +444,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<ChangeAffectedItem>> {
         let path = format!("/changes/{guid}/items");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn create_change(&self, params: &CreateChangeParams) -> Result<Change> {
@@ -458,7 +464,7 @@ impl ArenaClient {
             body["additionalAttributes"] = serde_json::json!(attrs);
         }
         let value = self.post("/changes", &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn update_change(&self, params: &UpdateChangeParams) -> Result<Change> {
@@ -476,7 +482,7 @@ impl ArenaClient {
         }
         let path = format!("/changes/{}", params.guid);
         let value = self.put(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn change_change_status(
@@ -511,7 +517,7 @@ impl ArenaClient {
         }
         let path = format!("/changes/{}/items", params.change_guid);
         let value = self.post(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn remove_change_affected_item(
@@ -528,7 +534,7 @@ impl ArenaClient {
     pub(crate) async fn get_change_files(&self, guid: &str) -> Result<ArenaListResponse<ItemFile>> {
         let path = format!("/changes/{guid}/files");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_change_implementation_statuses(
@@ -537,7 +543,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<ImplementationStatus>> {
         let path = format!("/changes/{guid}/implementationstatuses");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_revisions(
@@ -546,29 +552,40 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<ItemRevision>> {
         let path = format!("/items/{guid}/revisions");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_files(&self, guid: &str) -> Result<ArenaListResponse<ItemFile>> {
         let path = format!("/items/{guid}/files");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_file_content(
         &self,
         item_guid: &str,
         file_guid: &str,
-    ) -> Result<String> {
+    ) -> Result<FileContent> {
         let path = format!("/items/{item_guid}/files/{file_guid}/content");
         let (bytes, content_type) = self.get_bytes(&path).await?;
         if content_type.starts_with("text/")
             || content_type.contains("json")
             || content_type.contains("xml")
         {
-            Ok(String::from_utf8_lossy(&bytes).into_owned())
+            Ok(FileContent {
+                content_type,
+                encoding: "text".to_string(),
+                data: String::from_utf8_lossy(&bytes).into_owned(),
+                size_bytes: bytes.len(),
+            })
         } else {
-            Ok(format!("binary file, {} bytes", bytes.len()))
+            use base64::Engine;
+            Ok(FileContent {
+                content_type,
+                encoding: "base64".to_string(),
+                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                size_bytes: bytes.len(),
+            })
         }
     }
 
@@ -590,13 +607,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/files", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_file(&self, guid: &str) -> Result<FileEntry> {
         let path = format!("/files/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn search_requests(
@@ -620,13 +637,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/requests", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_request(&self, guid: &str) -> Result<Request> {
         let path = format!("/requests/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn create_request(&self, params: &CreateRequestParams) -> Result<Request> {
@@ -646,7 +663,7 @@ impl ArenaClient {
             body["additionalAttributes"] = serde_json::json!(attrs);
         }
         let value = self.post("/requests", &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn update_request(&self, params: &UpdateRequestParams) -> Result<Request> {
@@ -664,7 +681,7 @@ impl ArenaClient {
         }
         let path = format!("/requests/{}", params.guid);
         let value = self.put(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn change_request_status(
@@ -687,7 +704,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<RequestItem>> {
         let path = format!("/requests/{guid}/items");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn search_suppliers(
@@ -705,13 +722,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/suppliers", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_supplier(&self, guid: &str) -> Result<Supplier> {
         let path = format!("/suppliers/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn create_supplier(&self, params: &CreateSupplierParams) -> Result<Supplier> {
@@ -727,7 +744,7 @@ impl ArenaClient {
             body["additionalAttributes"] = serde_json::json!(attrs);
         }
         let value = self.post("/suppliers", &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn update_supplier(&self, params: &UpdateSupplierParams) -> Result<Supplier> {
@@ -745,7 +762,7 @@ impl ArenaClient {
         }
         let path = format!("/suppliers/{}", params.guid);
         let value = self.put(&path, &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn search_supplier_items(
@@ -763,7 +780,7 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/supplieritems", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn search_quality_processes(
@@ -787,13 +804,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/qualityprocesses", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_quality_process(&self, guid: &str) -> Result<QualityProcess> {
         let path = format!("/qualityprocesses/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_quality_process_steps(
@@ -802,7 +819,7 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<QualityStep>> {
         let path = format!("/qualityprocesses/{guid}/steps");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn change_quality_status(
@@ -837,13 +854,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/tickets", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_ticket(&self, guid: &str) -> Result<Ticket> {
         let path = format!("/tickets/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn create_ticket(&self, params: &CreateTicketParams) -> Result<Ticket> {
@@ -862,7 +879,7 @@ impl ArenaClient {
             body["additionalAttributes"] = serde_json::json!(attrs);
         }
         let value = self.post("/tickets", &body).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn search_training_plans(
@@ -883,13 +900,13 @@ impl ArenaClient {
             query.push(("limit".to_string(), limit.to_string()));
         }
         let value = self.get("/trainingplans", &query).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_training_plan(&self, guid: &str) -> Result<TrainingPlan> {
         let path = format!("/trainingplans/{guid}");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_training_plan_records(
@@ -898,26 +915,26 @@ impl ArenaClient {
     ) -> Result<ArenaListResponse<TrainingRecord>> {
         let path = format!("/trainingplans/{guid}/records");
         let value = self.get(&path, &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_lifecycle_phases(&self) -> Result<ArenaListResponse<LifecyclePhase>> {
         let value = self.get("/settings/items/lifecyclephases", &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_categories(&self) -> Result<ArenaListResponse<ItemCategory>> {
         let value = self.get("/settings/items/categories", &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_change_categories(&self) -> Result<ArenaListResponse<ChangeCategory>> {
         let value = self.get("/settings/changes/categories", &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 
     pub(crate) async fn get_item_number_formats(&self) -> Result<ArenaListResponse<NumberFormat>> {
         let value = self.get("/settings/items/numberformats", &[]).await?;
-        Ok(serde_json::from_value(value)?)
+        serde_json::from_value(value).context("failed to deserialize Arena API response")
     }
 }

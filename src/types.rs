@@ -1,13 +1,25 @@
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<i64>,
+}
+
+impl fmt::Debug for LoginRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LoginRequest")
+            .field("email", &self.email)
+            .field("password", &"[REDACTED]")
+            .field("workspace_id", &self.workspace_id)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,6 +426,15 @@ pub struct ImplementationStatus {
     pub implementation_status: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileContent {
+    pub content_type: String,
+    pub encoding: String,
+    pub data: String,
+    pub size_bytes: usize,
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SearchItemsParams {
     #[schemars(description = "Filter by item number (supports trailing * wildcard)")]
@@ -426,6 +447,10 @@ pub struct SearchItemsParams {
     pub category_guid: Option<String>,
     #[schemars(description = "Filter by lifecycle phase GUID")]
     pub lifecycle_phase_guid: Option<String>,
+    #[schemars(
+        description = "Filter by procurement type (OTS = off the shelf, MTS = made to spec)"
+    )]
+    pub procurement_type: Option<String>,
     #[schemars(description = "Result offset for pagination (default 0)")]
     pub offset: Option<i64>,
     #[schemars(description = "Max results to return (default 20, max 400)")]

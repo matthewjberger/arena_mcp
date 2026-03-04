@@ -27,8 +27,12 @@ impl ArenaServer {
     }
 }
 
-fn to_json<T: Serialize>(value: &T) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+fn to_json<T: Serialize>(value: &T) -> Result<String, McpError> {
+    serde_json::to_string_pretty(value).map_err(|error| McpError {
+        code: ErrorCode(-32603),
+        message: format!("serialization failed: {error}").into(),
+        data: None,
+    })
 }
 
 fn to_mcp_error(error: anyhow::Error) -> McpError {
@@ -53,7 +57,7 @@ impl ArenaServer {
             .search_items(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single item by GUID with full detail including custom attributes.")]
@@ -63,7 +67,7 @@ impl ArenaServer {
             .get_item(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Create a new item in Arena PLM.")]
@@ -73,7 +77,7 @@ impl ArenaServer {
             .create_item(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Update an existing item in Arena PLM.")]
@@ -83,7 +87,7 @@ impl ArenaServer {
             .update_item(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Delete an item from Arena PLM.")]
@@ -93,7 +97,7 @@ impl ArenaServer {
             .delete_item(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -108,7 +112,7 @@ impl ArenaServer {
             .get_item_sourcing(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get compliance requirements for an item.")]
@@ -121,7 +125,7 @@ impl ArenaServer {
             .get_item_compliance(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get references for an item.")]
@@ -134,7 +138,7 @@ impl ArenaServer {
             .get_item_references(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get quality processes associated with an item.")]
@@ -147,7 +151,7 @@ impl ArenaServer {
             .get_item_quality(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Change an item's lifecycle phase (e.g. from Design to Production).")]
@@ -160,7 +164,7 @@ impl ArenaServer {
             .item_lifecycle_phase_change(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -172,7 +176,7 @@ impl ArenaServer {
             .get_bom(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -187,7 +191,7 @@ impl ArenaServer {
             .get_where_used(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Add a line to an item's Bill of Materials.")]
@@ -200,7 +204,7 @@ impl ArenaServer {
             .create_bom_line(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Update an existing BOM line (quantity, ref des, notes).")]
@@ -213,7 +217,7 @@ impl ArenaServer {
             .update_bom_line(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Remove a line from an item's Bill of Materials.")]
@@ -226,7 +230,7 @@ impl ArenaServer {
             .delete_bom_line(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -241,7 +245,7 @@ impl ArenaServer {
             .search_changes(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single change order by GUID with full detail.")]
@@ -251,7 +255,7 @@ impl ArenaServer {
             .get_change(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -266,7 +270,7 @@ impl ArenaServer {
             .get_change_affected_items(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Create a new change order in Arena PLM.")]
@@ -279,7 +283,7 @@ impl ArenaServer {
             .create_change(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Update an existing change order in Arena PLM.")]
@@ -292,7 +296,7 @@ impl ArenaServer {
             .update_change(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -307,7 +311,7 @@ impl ArenaServer {
             .change_change_status(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Add an item to a change order's affected items list.")]
@@ -320,7 +324,7 @@ impl ArenaServer {
             .add_change_affected_item(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Remove an item from a change order's affected items list.")]
@@ -333,7 +337,7 @@ impl ArenaServer {
             .remove_change_affected_item(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get files associated with a change order.")]
@@ -346,7 +350,7 @@ impl ArenaServer {
             .get_change_files(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get implementation statuses for a change order's affected items.")]
@@ -359,7 +363,7 @@ impl ArenaServer {
             .get_change_implementation_statuses(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -374,7 +378,7 @@ impl ArenaServer {
             .get_item_revisions(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -389,20 +393,22 @@ impl ArenaServer {
             .get_item_files(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
-        description = "Get the content of a file associated with an item. Returns text content or a size summary for binary files."
+        description = "Get the content of a file associated with an item. Returns JSON with content_type, encoding (text or base64), data, and size_bytes. Binary files (CAD, PDF, images) are base64-encoded."
     )]
     async fn get_item_file_content(
         &self,
         params: Parameters<GetItemFileContentParams>,
     ) -> Result<String, McpError> {
-        self.client
+        let result = self
+            .client
             .get_item_file_content(&params.0.item_guid, &params.0.file_guid)
             .await
-            .map_err(to_mcp_error)
+            .map_err(to_mcp_error)?;
+        to_json(&result)
     }
 
     #[tool(description = "Search for files in Arena PLM. Filter by name and category.")]
@@ -415,7 +421,7 @@ impl ArenaServer {
             .search_files(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single file by GUID with full metadata.")]
@@ -425,7 +431,7 @@ impl ArenaServer {
             .get_file(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -440,7 +446,7 @@ impl ArenaServer {
             .search_requests(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single request by GUID with full detail.")]
@@ -450,7 +456,7 @@ impl ArenaServer {
             .get_request(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Create a new change request in Arena PLM.")]
@@ -463,7 +469,7 @@ impl ArenaServer {
             .create_request(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Update an existing change request in Arena PLM.")]
@@ -476,7 +482,7 @@ impl ArenaServer {
             .update_request(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -491,7 +497,7 @@ impl ArenaServer {
             .change_request_status(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get items associated with a request.")]
@@ -504,7 +510,7 @@ impl ArenaServer {
             .get_request_items(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -519,7 +525,7 @@ impl ArenaServer {
             .search_suppliers(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single supplier by GUID with full detail.")]
@@ -532,7 +538,7 @@ impl ArenaServer {
             .get_supplier(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Create a new supplier in Arena PLM.")]
@@ -545,7 +551,7 @@ impl ArenaServer {
             .create_supplier(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Update an existing supplier in Arena PLM.")]
@@ -558,7 +564,7 @@ impl ArenaServer {
             .update_supplier(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Search for supplier items. Filter by supplier GUID.")]
@@ -571,7 +577,7 @@ impl ArenaServer {
             .search_supplier_items(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(
@@ -586,7 +592,7 @@ impl ArenaServer {
             .search_quality_processes(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single quality process by GUID with full detail.")]
@@ -599,7 +605,7 @@ impl ArenaServer {
             .get_quality_process(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get the steps for a quality process.")]
@@ -612,7 +618,7 @@ impl ArenaServer {
             .get_quality_process_steps(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Change the status of a quality process (COMPLETE or REOPEN).")]
@@ -625,7 +631,7 @@ impl ArenaServer {
             .change_quality_status(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Search for tickets in Arena PLM. Filter by number and title.")]
@@ -638,7 +644,7 @@ impl ArenaServer {
             .search_tickets(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single ticket by GUID with full detail.")]
@@ -648,7 +654,7 @@ impl ArenaServer {
             .get_ticket(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Create a new ticket in Arena PLM from a template.")]
@@ -661,7 +667,7 @@ impl ArenaServer {
             .create_ticket(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Search for training plans in Arena PLM. Filter by number and name.")]
@@ -674,7 +680,7 @@ impl ArenaServer {
             .search_training_plans(&params.0)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get a single training plan by GUID with full detail.")]
@@ -687,7 +693,7 @@ impl ArenaServer {
             .get_training_plan(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get training records for a training plan.")]
@@ -700,7 +706,7 @@ impl ArenaServer {
             .get_training_plan_records(&params.0.guid)
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get all lifecycle phases configured in the Arena workspace.")]
@@ -713,7 +719,7 @@ impl ArenaServer {
             .get_lifecycle_phases()
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get all item categories configured in the Arena workspace.")]
@@ -726,7 +732,7 @@ impl ArenaServer {
             .get_item_categories()
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get all change categories configured in the Arena workspace.")]
@@ -739,7 +745,7 @@ impl ArenaServer {
             .get_change_categories()
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 
     #[tool(description = "Get item number formats configured in the Arena workspace.")]
@@ -752,7 +758,7 @@ impl ArenaServer {
             .get_item_number_formats()
             .await
             .map_err(to_mcp_error)?;
-        Ok(to_json(&result))
+        to_json(&result)
     }
 }
 
