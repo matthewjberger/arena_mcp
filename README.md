@@ -1,6 +1,13 @@
-# arena
+<h1 align="center">Arena MCP</h1>
 
-MCP server for the Arena PLM REST API.
+<p align="center">
+  <a href="https://github.com/matthewjberger/arena_mcp"><img alt="github" src="https://img.shields.io/badge/github-matthewjberger/arena__mcp-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20"></a>
+  <a href="https://github.com/matthewjberger/arena_mcp/blob/main/LICENSE-MIT"><img alt="license" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue?style=for-the-badge&labelColor=555555" height="20"></a>
+</p>
+
+<p align="center"><strong>MCP server and desktop app for Arena PLM.</strong></p>
+
+Arena MCP is an [MCP](https://modelcontextprotocol.io/) server that connects AI assistants to the [Arena PLM](https://www.arenasolutions.com/) REST API. Search items, explore BOMs, manage change orders, track quality processes, and more, all through structured tool calls. Includes a standalone desktop app with an embedded AI chat interface.
 
 ## Installation
 
@@ -10,7 +17,7 @@ cargo install --path .
 
 ## Quick Start
 
-Add arena as an MCP server in your client configuration:
+Add arena as an MCP server in your client configuration (Claude Desktop, Claude Code, etc.):
 
 ```json
 {
@@ -154,18 +161,18 @@ Arena uses session-based authentication. The server automatically:
 
 ## Desktop App
 
-The `app/` directory contains a standalone desktop application for interacting with Arena PLM. The MCP server and the desktop app are independent — you can use the MCP server with any MCP client (Claude Code, Claude Desktop, etc.) without the desktop app, and the desktop app is an optional GUI that provides additional features.
+The `app/` directory contains a standalone desktop application for interacting with Arena PLM. The MCP server is compiled directly into the app binary, so no separate installation is needed. You can also use the MCP server standalone with any MCP client (Claude Code, Claude Desktop, etc.).
 
 ### Features
 
-- **Login screen** — Enter Arena credentials directly in the app (no environment variables needed)
-- **AI chat** — Embedded Claude assistant with access to all Arena MCP tools
-- **Items browser** — Search and browse items in a sortable table, view item details, files, and revisions
-- **BOM tree** — Select an item and explore its Bill of Materials as a lazy-loading tree
-- **Changes browser** — Search change orders and view affected items
-- **File downloads** — Download files attached to items directly from the browser
-- **Read-only mode** — Write operations (create, update, delete) are blocked by default; enable in Settings
-- **Saved searches** — Save and recall search queries (stored in browser localStorage)
+- **Login screen**:Enter Arena credentials directly in the app (no environment variables needed)
+- **AI chat**:Embedded Claude assistant with access to all Arena MCP tools
+- **Items browser**:Search and browse items in a sortable table, view item details, files, and revisions
+- **BOM tree**:Select an item and explore its Bill of Materials as a lazy-loading tree
+- **Changes browser**:Search change orders and view affected items
+- **File downloads**:Download files attached to items directly from the browser
+- **Read-only mode**:Write operations (create, update, delete) are blocked by default; enable in Settings
+- **Saved searches**:Save and recall search queries (stored in browser localStorage)
 
 ### Running
 
@@ -176,7 +183,7 @@ just run
 
 ### Logs
 
-Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_1772606218.log`). These contain tracing output for login events, Arena API calls, Claude CLI interactions, tool use, and errors. Useful for debugging authentication issues or inspecting what the AI agent is doing.
+Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_1772606218.log`). Logs include login events, Arena API calls, Claude CLI interactions, tool use, and errors. GPU-level noise (wgpu, naga) is filtered out so logs stay readable.
 
 ### Architecture
 
@@ -189,4 +196,4 @@ Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_17
 
 ## License
 
-MIT
+Dual-licensed under MIT ([LICENSE-MIT](LICENSE-MIT)) or Apache 2.0 ([LICENSE-APACHE](LICENSE-APACHE)).
