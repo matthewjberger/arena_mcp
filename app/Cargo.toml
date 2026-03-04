@@ -26,6 +26,8 @@ nightshade = { git = "https://github.com/matthewjberger/nightshade.git", default
 include_dir = "0.7"
 serde_json = "1.0"
 arena_app_protocol = { path = "protocol" }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+base64 = "0.22"
 
 [build-dependencies]
 

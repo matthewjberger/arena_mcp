@@ -152,9 +152,35 @@ Arena uses session-based authentication. The server automatically:
 3. Re-authenticates on 401 responses
 4. Logs out when the server shuts down
 
-## Frontend App
+## Desktop App
 
-The `app/` directory contains a web frontend for browsing Arena data. See `app/README.md` for details.
+The `app/` directory contains a standalone desktop application for interacting with Arena PLM. The MCP server and the desktop app are independent — you can use the MCP server with any MCP client (Claude Code, Claude Desktop, etc.) without the desktop app, and the desktop app is an optional GUI that provides additional features.
+
+### Features
+
+- **Login screen** — Enter Arena credentials directly in the app (no environment variables needed)
+- **AI chat** — Embedded Claude assistant with access to all Arena MCP tools
+- **Items browser** — Search and browse items in a sortable table, view item details, files, and revisions
+- **BOM tree** — Select an item and explore its Bill of Materials as a lazy-loading tree
+- **Changes browser** — Search change orders and view affected items
+- **File downloads** — Download files attached to items directly from the browser
+- **Read-only mode** — Write operations (create, update, delete) are blocked by default; enable in Settings
+- **Saved searches** — Save and recall search queries (stored in browser localStorage)
+
+### Running
+
+```
+cd app
+just run
+```
+
+### Architecture
+
+- **Backend** (`app/src/main.rs`): Nightshade desktop host with egui + webview + Claude CLI integration
+- **Frontend** (`app/site/`): Leptos 0.8 CSR compiled to WASM, embedded in webview
+- **Protocol** (`app/protocol/`): `#![no_std]` shared types for frontend-backend IPC
+- **Arena API proxy**: Backend spawns a worker thread for direct Arena API access (browse views bypass Claude)
+- **Claude CLI worker**: Spawned after login with credentials passed via environment variables to the MCP server
 
 ## License
 

@@ -1,109 +1,68 @@
+mod arena;
+mod browse;
+mod chat;
+mod login;
+mod settings;
+mod state;
+
 use arena_app_protocol::{AgentStatus, BackendEvent, FrontendCommand};
 use leptos::prelude::*;
-use web_sys::wasm_bindgen::JsCast;
 
-#[derive(Clone)]
-struct ToolUseBlock {
-    tool_name: String,
-    tool_id: String,
-    input_json: String,
-    finished: bool,
-}
-
-#[derive(Clone)]
-enum MessageRole {
-    User,
-    Assistant,
-}
-
-#[derive(Clone)]
-struct ChatMessage {
-    role: MessageRole,
-    content: String,
-    thinking: String,
-    tool_uses: Vec<ToolUseBlock>,
-}
-
-#[derive(Clone)]
-enum StatusDisplay {
-    Disconnected,
-    Idle,
-    Thinking,
-    Streaming,
-    UsingTool { tool_name: String },
-}
-
-impl StatusDisplay {
-    fn label(&self) -> &str {
-        match self {
-            Self::Disconnected => "Disconnected",
-            Self::Idle => "Ready",
-            Self::Thinking => "Thinking...",
-            Self::Streaming => "Streaming...",
-            Self::UsingTool { .. } => "Using tool...",
-        }
-    }
-
-    fn dot_class(&self) -> &str {
-        match self {
-            Self::Disconnected => "bg-red-500",
-            Self::Idle => "bg-green-500",
-            Self::Thinking => "bg-yellow-500",
-            Self::Streaming => "bg-blue-500",
-            Self::UsingTool { .. } => "bg-purple-500",
-        }
-    }
-}
+use crate::browse::{BomTree, ChangesBrowse, ItemsBrowse};
+use crate::chat::ChatView;
+use crate::login::LoginScreen;
+use crate::settings::SettingsView;
+use crate::state::{
+    AppState, ChatState, LoginState, MessageRole, StatusDisplay, ToolUseBlock, View,
+};
 
 #[component]
 pub fn App() -> impl IntoView {
-    let messages = RwSignal::new(Vec::<ChatMessage>::new());
-    let streaming_text = RwSignal::new(String::new());
-    let thinking_text = RwSignal::new(String::new());
-    let active_tools = RwSignal::new(Vec::<ToolUseBlock>::new());
-    let status = RwSignal::new(StatusDisplay::Disconnected);
-    let session_id = RwSignal::new(Option::<String>::None);
-    let input_text = RwSignal::new(String::new());
+    let app = AppState::new();
+    let chat = ChatState::new();
+    let login_state = LoginState::new();
 
-    let finalize = move || {
-        let text = streaming_text.get_untracked();
-        let thinking = thinking_text.get_untracked();
-        let tools = active_tools.get_untracked();
-        if !text.is_empty() || !thinking.is_empty() || !tools.is_empty() {
-            messages.update(|messages| {
-                messages.push(ChatMessage {
-                    role: MessageRole::Assistant,
-                    content: text,
-                    thinking,
-                    tool_uses: tools,
-                });
-            });
-        }
-        streaming_text.set(String::new());
-        thinking_text.set(String::new());
-        active_tools.set(Vec::new());
-    };
+    provide_context(app.clone());
+    provide_context(chat.clone());
+    provide_context(login_state.clone());
 
-    Effect::new(move |_| {
-        nightshade::webview::connect(FrontendCommand::Ready, move |event| {
-            match event {
+    Effect::new({
+        let app = app.clone();
+        let chat = chat.clone();
+        let login_state = login_state.clone();
+        move |_| {
+            let app = app.clone();
+            let chat = chat.clone();
+            let login_state = login_state.clone();
+            nightshade::webview::connect(FrontendCommand::Ready, move |event| match event {
                 BackendEvent::Connected => {
-                    status.set(StatusDisplay::Idle);
+                    app.status.set(StatusDisplay::Idle);
+                }
+                BackendEvent::LoginSuccess { .. } => {
+                    app.logged_in.set(true);
+                    app.status.set(StatusDisplay::Idle);
+                    login_state.loading.set(false);
+                    login_state.error.set(None);
+                }
+                BackendEvent::LoginFailure { message } => {
+                    login_state.loading.set(false);
+                    login_state.error.set(Some(message));
                 }
                 BackendEvent::StreamingStarted { session_id: sid } => {
-                    session_id.set(Some(sid));
-                    streaming_text.set(String::new());
-                    thinking_text.set(String::new());
-                    active_tools.set(Vec::new());
+                    app.session_id.set(Some(sid));
+                    chat.streaming_text.set(String::new());
+                    chat.thinking_text.set(String::new());
+                    chat.active_tools.set(Vec::new());
                 }
                 BackendEvent::TextDelta { text } => {
-                    streaming_text.update(|current| current.push_str(&text));
+                    chat.streaming_text
+                        .update(|current| current.push_str(&text));
                 }
                 BackendEvent::ThinkingDelta { text } => {
-                    thinking_text.update(|current| current.push_str(&text));
+                    chat.thinking_text.update(|current| current.push_str(&text));
                 }
                 BackendEvent::ToolUseStarted { tool_name, tool_id } => {
-                    active_tools.update(|tools| {
+                    chat.active_tools.update(|tools| {
                         tools.push(ToolUseBlock {
                             tool_name,
                             tool_id,
@@ -116,7 +75,7 @@ pub fn App() -> impl IntoView {
                     tool_id,
                     partial_json,
                 } => {
-                    active_tools.update(|tools| {
+                    chat.active_tools.update(|tools| {
                         if let Some(tool) = tools
                             .iter_mut()
                             .rev()
@@ -127,7 +86,7 @@ pub fn App() -> impl IntoView {
                     });
                 }
                 BackendEvent::ToolUseFinished { tool_id } => {
-                    active_tools.update(|tools| {
+                    chat.active_tools.update(|tools| {
                         if let Some(tool) = tools
                             .iter_mut()
                             .rev()
@@ -139,12 +98,12 @@ pub fn App() -> impl IntoView {
                 }
                 BackendEvent::TurnComplete { .. } => {}
                 BackendEvent::RequestComplete { .. } => {
-                    finalize();
+                    chat.finalize();
                 }
                 BackendEvent::Error { message } => {
-                    finalize();
-                    messages.update(|messages| {
-                        messages.push(ChatMessage {
+                    chat.finalize();
+                    chat.messages.update(|messages| {
+                        messages.push(state::ChatMessage {
                             role: MessageRole::Assistant,
                             content: format!("Error: {message}"),
                             thinking: String::new(),
@@ -155,7 +114,7 @@ pub fn App() -> impl IntoView {
                 BackendEvent::StatusUpdate {
                     status: agent_status,
                 } => {
-                    status.set(match agent_status {
+                    app.status.set(match agent_status {
                         AgentStatus::Idle => StatusDisplay::Idle,
                         AgentStatus::Thinking => StatusDisplay::Thinking,
                         AgentStatus::Streaming => StatusDisplay::Streaming,
@@ -164,63 +123,75 @@ pub fn App() -> impl IntoView {
                         }
                     });
                 }
-            }
-        });
+                BackendEvent::ArenaResponse { request_id, result } => {
+                    arena::resolve_arena(request_id, result);
+                }
+                BackendEvent::FileContent {
+                    request_id,
+                    file_name,
+                    data_base64,
+                    mime_type,
+                } => {
+                    arena::resolve_file_success(request_id, file_name, data_base64, mime_type);
+                }
+                BackendEvent::FileError {
+                    request_id,
+                    message,
+                } => {
+                    arena::resolve_file_error(request_id, message);
+                }
+                BackendEvent::WriteModeChanged { enabled } => {
+                    app.write_mode.set(enabled);
+                }
+            });
+        }
     });
 
-    let is_busy =
-        move || !matches!(status.get(), StatusDisplay::Idle | StatusDisplay::Disconnected);
-    let can_send = move || !input_text.get().trim().is_empty() && !is_busy();
+    view! {
+        {move || {
+            if app.logged_in.get() {
+                view! { <MainApp /> }.into_any()
+            } else {
+                view! { <LoginScreen /> }.into_any()
+            }
+        }}
+    }
+}
 
-    let send_prompt = move || {
-        let text = input_text.get_untracked();
-        if text.trim().is_empty() {
-            return;
+#[component]
+fn MainApp() -> impl IntoView {
+    let app = use_context::<AppState>().unwrap();
+
+    let sidebar_btn = |label: &'static str, icon: &'static str, target: View| {
+        let target_clone = target.clone();
+        let is_active = move || app.view.get() == target_clone;
+        view! {
+            <button
+                class=move || format!(
+                    "w-full text-left px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors {}",
+                    if is_active() { "bg-[#1f6feb33] text-[#58a6ff]" } else { "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]" }
+                )
+                on:click=move |_| app.view.set(target.clone())
+            >
+                <span class="mr-2">{icon}</span>
+                {label}
+            </button>
         }
-        messages.update(|messages| {
-            messages.push(ChatMessage {
-                role: MessageRole::User,
-                content: text.clone(),
-                thinking: String::new(),
-                tool_uses: Vec::new(),
-            });
-        });
-        nightshade::webview::send(&FrontendCommand::SendPrompt {
-            prompt: text,
-            session_id: session_id.get_untracked(),
-            model: None,
-        });
-        input_text.set(String::new());
-    };
-
-    let on_keydown = move |event: web_sys::KeyboardEvent| {
-        if event.key() == "Enter" && event.ctrl_key() && can_send() {
-            event.prevent_default();
-            send_prompt();
-        }
-    };
-
-    let on_send = move |_| {
-        if can_send() {
-            send_prompt();
-        }
-    };
-
-    let on_cancel = move |_| {
-        nightshade::webview::send(&FrontendCommand::CancelRequest);
     };
 
     view! {
-        <div class="h-screen flex flex-col bg-[#0d1117] text-[#c9d1d9] font-mono">
-            // Toolbar
-            <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
-                <div class="flex items-center gap-4">
-                    <span class="text-sm font-bold tracking-wide">"ARENA PLM"</span>
+        <div class="h-screen flex bg-[#0d1117] text-[#c9d1d9] font-mono">
+            // Sidebar
+            <div class="w-48 flex flex-col bg-[#161b22] border-r border-[#30363d]">
+                <div class="px-3 py-3 border-b border-[#30363d]">
                     <div class="flex items-center gap-2">
-                        <div class={move || format!("w-2 h-2 rounded-full {}", status.get().dot_class())}></div>
-                        <span class="text-xs text-[#8b949e]">{move || status.get().label().to_string()}</span>
+                        <span class="text-sm font-bold tracking-wide">"ARENA PLM"</span>
+                        <div class={move || format!("w-2 h-2 rounded-full {}", app.status.get().dot_class())}></div>
+                    </div>
+                    <div class="text-xs text-[#8b949e] mt-0.5">
+                        {move || app.status.get().label().to_string()}
                         {move || {
-                            if let StatusDisplay::UsingTool { tool_name } = status.get() {
+                            if let StatusDisplay::UsingTool { tool_name } = app.status.get() {
                                 format!(" ({tool_name})")
                             } else {
                                 String::new()
@@ -228,194 +199,29 @@ pub fn App() -> impl IntoView {
                         }}
                     </div>
                 </div>
-                <div class="text-xs text-[#484f58]">
-                    {move || session_id.get().map(|id| {
-                        if id.len() > 12 { format!("{}...", &id[..12]) } else { id }
+                <div class="flex-1 p-2 space-y-1">
+                    {sidebar_btn("Chat", "💬", View::Chat)}
+                    {sidebar_btn("Items", "📦", View::Items)}
+                    {sidebar_btn("BOMs", "🌳", View::Bom)}
+                    {sidebar_btn("Changes", "📋", View::Changes)}
+                    {sidebar_btn("Settings", "⚙️", View::Settings)}
+                </div>
+                <div class="px-3 py-2 border-t border-[#30363d] text-xs text-[#484f58]">
+                    {move || app.session_id.get().map(|id| {
+                        if id.len() > 16 { format!("{}...", &id[..16]) } else { id }
                     }).unwrap_or_default()}
                 </div>
             </div>
 
-            // Messages
-            <div class="flex-1 overflow-y-auto px-4 py-4" id="chat-scroll">
-                {move || {
-                    let msgs = messages.get();
-                    let is_thinking = matches!(status.get(), StatusDisplay::Thinking);
-                    if msgs.is_empty() && streaming_text.get().is_empty() && thinking_text.get().is_empty() && !is_thinking {
-                        view! {
-                            <div class="flex flex-col items-center justify-center h-full text-[#484f58] text-sm gap-2">
-                                <div>"Ask about items, BOMs, changes, or suppliers in Arena PLM"</div>
-                                <div class="text-xs">"Claude can search items, view BOMs, look up ECOs, check where-used, and more"</div>
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! {
-                            <div>
-                                {msgs.into_iter().map(|message| {
-                                    let is_user = matches!(message.role, MessageRole::User);
-                                    let container_class = if is_user { "flex justify-end mb-3" } else { "flex justify-start mb-3" };
-                                    let bubble_class = if is_user {
-                                        "max-w-[80%] px-4 py-2.5 rounded-lg bg-[#1f6feb] text-white"
-                                    } else {
-                                        "max-w-[80%] px-4 py-2.5 rounded-lg bg-[#161b22] text-[#c9d1d9] border border-[#30363d]"
-                                    };
-                                    let thinking = message.thinking.clone();
-                                    let has_thinking = !thinking.is_empty();
-                                    let tool_uses = message.tool_uses.clone();
-
-                                    view! {
-                                        <div class={container_class}>
-                                            <div class={bubble_class}>
-                                                {if has_thinking && !is_user {
-                                                    Some(view! {
-                                                        <details class="mb-2">
-                                                            <summary class="text-xs text-yellow-500 cursor-pointer hover:text-yellow-400">"Thinking"</summary>
-                                                            <pre class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed mt-1 text-[#8b949e] pl-3 border-l-2 border-[#30363d]">{thinking}</pre>
-                                                        </details>
-                                                    })
-                                                } else {
-                                                    None
-                                                }}
-                                                <pre class="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed m-0">{message.content}</pre>
-                                                {if !tool_uses.is_empty() {
-                                                    Some(view! {
-                                                        <div class="mt-2">
-                                                            {tool_uses.into_iter().map(|tool| {
-                                                                view! {
-                                                                    <div class="my-1 border border-[#30363d] rounded-md overflow-hidden">
-                                                                        <details>
-                                                                            <summary class="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] text-xs cursor-pointer hover:bg-[#1c2129]">
-                                                                                <span class="text-purple-400 font-medium">{tool.tool_name}</span>
-                                                                                {if tool.finished {
-                                                                                    view! { <span class="text-green-500 ml-auto">"done"</span> }.into_any()
-                                                                                } else {
-                                                                                    view! { <span class="text-yellow-500 ml-auto animate-pulse">"running..."</span> }.into_any()
-                                                                                }}
-                                                                            </summary>
-                                                                            {if !tool.input_json.is_empty() {
-                                                                                Some(view! {
-                                                                                    <pre class="px-3 py-2 text-xs text-[#8b949e] bg-[#0d1117] overflow-x-auto whitespace-pre-wrap break-all">{tool.input_json}</pre>
-                                                                                })
-                                                                            } else {
-                                                                                None
-                                                                            }}
-                                                                        </details>
-                                                                    </div>
-                                                                }
-                                                            }).collect_view()}
-                                                        </div>
-                                                    })
-                                                } else {
-                                                    None
-                                                }}
-                                            </div>
-                                        </div>
-                                    }
-                                }).collect_view()}
-
-                                // Streaming bubble
-                                {move || {
-                                    let thinking = thinking_text.get();
-                                    let text = streaming_text.get();
-                                    let tools = active_tools.get();
-                                    let current_status = status.get();
-                                    let is_thinking = matches!(current_status, StatusDisplay::Thinking);
-                                    let is_active = !text.is_empty() || !tools.is_empty() || !thinking.is_empty() || is_thinking;
-
-                                    if is_active {
-                                        Some(view! {
-                                            <div class="flex justify-start mb-3">
-                                                <div class="max-w-[80%] px-4 py-2.5 rounded-lg bg-[#161b22] text-[#c9d1d9] border border-[#30363d]">
-                                                    {if !thinking.is_empty() {
-                                                        view! {
-                                                            <div class="mb-3 pb-3 border-b border-[#30363d]">
-                                                                <span class="text-yellow-500 text-xs">"Thinking"</span>
-                                                                <pre class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed mt-1 text-[#8b949e]">{thinking}</pre>
-                                                            </div>
-                                                        }.into_any()
-                                                    } else if is_thinking && text.is_empty() {
-                                                        view! {
-                                                            <div class="mb-3 pb-3 border-b border-[#30363d]">
-                                                                <span class="text-yellow-500 text-xs animate-pulse">"Thinking..."</span>
-                                                            </div>
-                                                        }.into_any()
-                                                    } else {
-                                                        view! { <div></div> }.into_any()
-                                                    }}
-                                                    {if !text.is_empty() {
-                                                        Some(view! {
-                                                            <pre class="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed m-0">{text}</pre>
-                                                        })
-                                                    } else {
-                                                        None
-                                                    }}
-                                                    {if !tools.is_empty() {
-                                                        Some(view! {
-                                                            <div class="mt-2">
-                                                                {tools.into_iter().map(|tool| {
-                                                                    view! {
-                                                                        <div class="my-1 border border-[#30363d] rounded-md overflow-hidden">
-                                                                            <div class="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] text-xs">
-                                                                                <span class="text-purple-400 font-medium">{tool.tool_name}</span>
-                                                                                {if tool.finished {
-                                                                                    view! { <span class="text-green-500 ml-auto">"done"</span> }.into_any()
-                                                                                } else {
-                                                                                    view! { <span class="text-yellow-500 ml-auto animate-pulse">"running..."</span> }.into_any()
-                                                                                }}
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                }).collect_view()}
-                                                            </div>
-                                                        })
-                                                    } else {
-                                                        None
-                                                    }}
-                                                    <span class="inline-block w-2 h-4 bg-[#c9d1d9] animate-pulse ml-0.5"></span>
-                                                </div>
-                                            </div>
-                                        })
-                                    } else {
-                                        None
-                                    }
-                                }}
-                            </div>
-                        }.into_any()
-                    }
+            // Content
+            <div class="flex-1 flex flex-col min-h-0">
+                {move || match app.view.get() {
+                    View::Chat => view! { <ChatView /> }.into_any(),
+                    View::Items => view! { <ItemsBrowse /> }.into_any(),
+                    View::Bom => view! { <BomTree /> }.into_any(),
+                    View::Changes => view! { <ChangesBrowse /> }.into_any(),
+                    View::Settings => view! { <SettingsView /> }.into_any(),
                 }}
-            </div>
-
-            // Input
-            <div class="px-4 py-3 bg-[#161b22] border-t border-[#30363d]">
-                <div class="flex gap-2">
-                    <textarea
-                        class="flex-1 bg-[#0d1117] text-[#c9d1d9] border border-[#30363d] rounded-lg px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-[#58a6ff] placeholder-[#484f58]"
-                        placeholder="Ask about Arena PLM data... (Ctrl+Enter to send)"
-                        rows="3"
-                        prop:value=move || input_text.get()
-                        on:input=move |event| {
-                            let target = event.target().unwrap();
-                            let textarea: web_sys::HtmlTextAreaElement = target.unchecked_into();
-                            input_text.set(textarea.value());
-                        }
-                        on:keydown=on_keydown
-                    />
-                    <div class="flex flex-col gap-1">
-                        <button
-                            class="px-4 py-2 bg-[#238636] text-white text-sm rounded-lg hover:bg-[#2ea043] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                            on:click=on_send
-                            disabled=move || !can_send()
-                        >
-                            "Send"
-                        </button>
-                        <button
-                            class="px-4 py-2 bg-[#da3633] text-white text-sm rounded-lg hover:bg-[#f85149] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                            on:click=on_cancel
-                            disabled=move || !is_busy()
-                        >
-                            "Cancel"
-                        </button>
-                    </div>
-                </div>
             </div>
         </div>
     }
