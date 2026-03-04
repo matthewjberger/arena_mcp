@@ -9,6 +9,9 @@
 
 Arena MCP is an [MCP](https://modelcontextprotocol.io/) server that connects AI assistants to the [Arena PLM](https://www.arenasolutions.com/) REST API. Search items, explore BOMs, manage change orders, track quality processes, and more, all through structured tool calls. Includes a standalone desktop app with an embedded AI chat interface.
 
+<img width="802" height="632" alt="Screenshot 2026-03-03 235425" src="https://github.com/user-attachments/assets/d90aeb77-c06e-44cd-a442-6b58de8808a2" />
+<img width="802" height="632" alt="Screenshot 2026-03-03 235444" src="https://github.com/user-attachments/assets/5b1c97d4-e2a5-4521-b25d-a82952d7cf76" />
+
 ## Installation
 
 ```bash
