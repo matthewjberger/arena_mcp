@@ -13,25 +13,25 @@ use nightshade::webview::{WebviewContext, serve_embedded_dir};
 static DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/site/dist");
 
 const WRITE_TOOLS: &[&str] = &[
-    "mcp__arena__create_item",
-    "mcp__arena__update_item",
-    "mcp__arena__delete_item",
-    "mcp__arena__create_bom_line",
-    "mcp__arena__update_bom_line",
-    "mcp__arena__delete_bom_line",
-    "mcp__arena__create_change",
-    "mcp__arena__update_change",
-    "mcp__arena__change_change_status",
-    "mcp__arena__add_change_affected_item",
-    "mcp__arena__remove_change_affected_item",
-    "mcp__arena__create_request",
-    "mcp__arena__update_request",
-    "mcp__arena__change_request_status",
-    "mcp__arena__create_supplier",
-    "mcp__arena__update_supplier",
-    "mcp__arena__create_ticket",
-    "mcp__arena__change_quality_status",
-    "mcp__arena__item_lifecycle_phase_change",
+    "mcp__arena_mcp__create_item",
+    "mcp__arena_mcp__update_item",
+    "mcp__arena_mcp__delete_item",
+    "mcp__arena_mcp__create_bom_line",
+    "mcp__arena_mcp__update_bom_line",
+    "mcp__arena_mcp__delete_bom_line",
+    "mcp__arena_mcp__create_change",
+    "mcp__arena_mcp__update_change",
+    "mcp__arena_mcp__change_change_status",
+    "mcp__arena_mcp__add_change_affected_item",
+    "mcp__arena_mcp__remove_change_affected_item",
+    "mcp__arena_mcp__create_request",
+    "mcp__arena_mcp__update_request",
+    "mcp__arena_mcp__change_request_status",
+    "mcp__arena_mcp__create_supplier",
+    "mcp__arena_mcp__update_supplier",
+    "mcp__arena_mcp__create_ticket",
+    "mcp__arena_mcp__change_quality_status",
+    "mcp__arena_mcp__item_lifecycle_phase_change",
 ];
 
 struct Credentials {
@@ -79,6 +79,11 @@ enum LoginResult {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().any(|arg| arg == "--mcp") {
+        tokio::runtime::Runtime::new()?.block_on(arena::serve())?;
+        return Ok(());
+    }
+
     let (cli_cmd_tx, cli_cmd_rx) = mpsc::channel::<CliCommand>();
     let (cli_event_tx, cli_event_rx) = mpsc::channel::<CliEvent>();
     let (arena_result_tx, arena_result_rx) = mpsc::channel::<(u32, ArenaResult)>();
@@ -852,12 +857,16 @@ impl ArenaApp {
             ),
             mcp_config: McpConfig::Custom(serde_json::json!({
                 "mcpServers": {
-                    "arena": {
-                        "command": "arena",
-                        "args": []
+                    "arena_mcp": {
+                        "command": std::env::current_exe()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+                        "args": ["--mcp"]
                     }
                 }
             }).to_string()),
+            allowed_tools: Some(vec!["mcp__arena_mcp__*".to_string()]),
             disallowed_tools: disallowed,
             env,
             ..Default::default()
