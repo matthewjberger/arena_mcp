@@ -118,6 +118,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         credentials: None,
         write_mode: false,
         log_file_path,
+        accumulated_text: String::new(),
+        accumulated_thinking: String::new(),
+        accumulated_tool_input: String::new(),
     })?;
 
     Ok(())
@@ -142,6 +145,9 @@ struct ArenaApp {
     credentials: Option<Credentials>,
     write_mode: bool,
     log_file_path: std::path::PathBuf,
+    accumulated_text: String,
+    accumulated_thinking: String,
+    accumulated_tool_input: String,
 }
 
 impl State for ArenaApp {
@@ -218,8 +224,8 @@ impl ArenaApp {
                     tracing::info!(
                         session_id = ?session_id,
                         model = ?model,
-                        prompt_len = prompt.len(),
-                        "sending prompt to claude cli"
+                        %prompt,
+                        "prompt sent to claude"
                     );
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Thinking,
@@ -238,7 +244,7 @@ impl ArenaApp {
                     });
                 }
                 FrontendCommand::ArenaRequest { request_id, method } => {
-                    tracing::debug!(request_id, ?method, "arena api request");
+                    tracing::info!(request_id, ?method, "arena api request");
                     let sent = self
                         .arena_tx
                         .as_ref()
@@ -540,7 +546,7 @@ impl ArenaApp {
              -> Result<serde_json::Value, String> {
                 let token = ensure_session(session_token, client)?;
                 let url = format!("{base_url}{path}");
-                tracing::debug!(%path, "arena worker: GET");
+                tracing::info!(%path, "arena worker: GET");
                 let response = client
                     .get(&url)
                     .header("arena_session_id", &token)
@@ -747,10 +753,10 @@ impl ArenaApp {
                         break;
                     }
                     Some(WorkItem::Arena(request_id, method)) => {
-                        tracing::debug!(request_id, "arena worker: handling request");
+                        tracing::info!(request_id, "arena worker: handling request");
                         let result = match handle_method(&mut session_token, &client, method) {
                             Ok(json) => {
-                                tracing::debug!(request_id, "arena worker: request succeeded");
+                                tracing::info!(request_id, "arena worker: request succeeded");
                                 ArenaResult::Success {
                                     json: json.to_string(),
                                 }
@@ -919,19 +925,24 @@ impl ArenaApp {
             match event {
                 CliEvent::SessionStarted { session_id } => {
                     tracing::info!(%session_id, "cli session started");
+                    self.accumulated_text.clear();
+                    self.accumulated_thinking.clear();
                     self.ctx.send(BackendEvent::StreamingStarted { session_id });
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Streaming,
                     });
                 }
                 CliEvent::TextDelta { text } => {
+                    self.accumulated_text.push_str(&text);
                     self.ctx.send(BackendEvent::TextDelta { text });
                 }
                 CliEvent::ThinkingDelta { text } => {
+                    self.accumulated_thinking.push_str(&text);
                     self.ctx.send(BackendEvent::ThinkingDelta { text });
                 }
                 CliEvent::ToolUseStarted { tool_name, tool_id } => {
                     tracing::info!(%tool_name, %tool_id, "tool use started");
+                    self.accumulated_tool_input.clear();
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::UsingTool {
                             tool_name: tool_name.clone(),
@@ -944,20 +955,41 @@ impl ArenaApp {
                     tool_id,
                     partial_json,
                 } => {
+                    self.accumulated_tool_input.push_str(&partial_json);
                     self.ctx.send(BackendEvent::ToolUseInputDelta {
                         tool_id,
                         partial_json,
                     });
                 }
                 CliEvent::ToolUseFinished { tool_id } => {
-                    tracing::debug!(%tool_id, "tool use finished");
+                    tracing::info!(
+                        %tool_id,
+                        input = %self.accumulated_tool_input,
+                        "tool use finished"
+                    );
+                    self.accumulated_tool_input.clear();
                     self.ctx.send(BackendEvent::ToolUseFinished { tool_id });
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Streaming,
                     });
                 }
                 CliEvent::TurnComplete { session_id } => {
-                    tracing::debug!(%session_id, "turn complete");
+                    if !self.accumulated_thinking.is_empty() {
+                        tracing::info!(
+                            %session_id,
+                            thinking = %self.accumulated_thinking,
+                            "claude thinking"
+                        );
+                    }
+                    if !self.accumulated_text.is_empty() {
+                        tracing::info!(
+                            %session_id,
+                            response = %self.accumulated_text,
+                            "claude response"
+                        );
+                    }
+                    self.accumulated_text.clear();
+                    self.accumulated_thinking.clear();
                     self.ctx.send(BackendEvent::TurnComplete { session_id });
                 }
                 CliEvent::Complete {
@@ -995,7 +1027,7 @@ impl ArenaApp {
         for (request_id, result) in self.arena_result_rx.try_iter() {
             match &result {
                 ArenaResult::Success { json } => {
-                    tracing::debug!(
+                    tracing::info!(
                         request_id,
                         response_len = json.len(),
                         "arena response forwarded"
