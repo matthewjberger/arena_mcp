@@ -3229,13 +3229,14 @@ checksum = "60993920e071b0c9b66f14e2b32740a4e27ffc82854dcd72035887f336a09a28"
 
 [[package]]
 name = "nightshade"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dc22fd33a4e6266e70fc0e9f038c70b21e4451e5c04956c0f7092809234ea3e"
+checksum = "9d414e2e8979e5f2cba91222f9b86d7fc656c8f7a9bfb93c171d4f07e6cddd67"
 dependencies = [
  "base64",
  "bitflags 2.11.0",
  "bytemuck",
+ "chrono",
  "console_error_panic_hook",
  "egui",
  "egui-wgpu",

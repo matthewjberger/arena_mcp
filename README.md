@@ -165,14 +165,14 @@ The `app/` directory contains a standalone desktop application for interacting w
 
 ### Features
 
-- **Login screen**:Enter Arena credentials directly in the app (no environment variables needed)
-- **AI chat**:Embedded Claude assistant with access to all Arena MCP tools
-- **Items browser**:Search and browse items in a sortable table, view item details, files, and revisions
-- **BOM tree**:Select an item and explore its Bill of Materials as a lazy-loading tree
-- **Changes browser**:Search change orders and view affected items
-- **File downloads**:Download files attached to items directly from the browser
-- **Read-only mode**:Write operations (create, update, delete) are blocked by default; enable in Settings
-- **Saved searches**:Save and recall search queries (stored in browser localStorage)
+- **Login screen**: Enter Arena credentials directly in the app (no environment variables needed)
+- **AI chat**: Embedded Claude assistant with access to all Arena MCP tools
+- **Items browser**: Search and browse items in a sortable table, view item details, files, and revisions
+- **BOM tree**: Select an item and explore its Bill of Materials as a lazy-loading tree
+- **Changes browser**: Search change orders and view affected items
+- **File downloads**: Download files attached to items directly from the browser
+- **Read-only mode**: Write operations (create, update, delete) are blocked by default; enable in Settings
+- **Saved searches**: Save and recall search queries (stored in browser localStorage)
 
 ### Running
 
