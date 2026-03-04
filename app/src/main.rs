@@ -96,8 +96,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_filter: "info,wgpu_hal=error,wgpu_core=error,naga=error".to_string(),
         ..Default::default()
     };
-    let log_file_path =
-        std::path::PathBuf::from(&log_config.directory).join(log_file_name("Arena PLM", &log_config));
+    let log_file_path = std::path::PathBuf::from(&log_config.directory)
+        .join(log_file_name("Arena PLM", &log_config));
 
     launch(ArenaApp {
         port,
