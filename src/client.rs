@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use base64::Engine;
 use reqwest::Client;
 use tokio::sync::Mutex;
 
@@ -252,6 +253,27 @@ impl ArenaClient {
         Ok((bytes, content_type))
     }
 
+    fn bytes_to_file_content(bytes: Vec<u8>, content_type: String) -> FileContent {
+        if content_type.starts_with("text/")
+            || content_type.contains("json")
+            || content_type.contains("xml")
+        {
+            FileContent {
+                content_type,
+                encoding: "text".to_string(),
+                data: String::from_utf8_lossy(&bytes).into_owned(),
+                size_bytes: bytes.len(),
+            }
+        } else {
+            FileContent {
+                content_type,
+                encoding: "base64".to_string(),
+                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                size_bytes: bytes.len(),
+            }
+        }
+    }
+
     fn parse_additional_attributes(
         json: &Option<String>,
     ) -> Result<Option<Vec<serde_json::Value>>> {
@@ -408,6 +430,55 @@ impl ArenaClient {
         let path = format!("/items/{guid}/bom");
         let value = self.get(&path, &[]).await?;
         serde_json::from_value(value).context("failed to deserialize Arena API response")
+    }
+
+    pub(crate) async fn get_bom_recursive(
+        &self,
+        guid: &str,
+        max_depth: u32,
+    ) -> Result<serde_json::Value> {
+        let bom = self.get_bom(guid).await?;
+        if bom.results.is_empty() {
+            return Ok(serde_json::json!({ "count": 0, "results": [] }));
+        }
+
+        let futures: Vec<_> = bom
+            .results
+            .iter()
+            .map(|line| async move {
+                let mut line_json = serde_json::to_value(line)?;
+                if max_depth > 0 {
+                    if let Some(item) = &line.item {
+                        if let Some(child_guid) = &item.guid {
+                            let children =
+                                Box::pin(self.get_bom_recursive(child_guid, max_depth - 1)).await?;
+                            let child_count = children
+                                .get("results")
+                                .and_then(|results| results.as_array())
+                                .map_or(0, |array| array.len());
+                            if child_count > 0 {
+                                line_json["children"] = children;
+                            } else {
+                                line_json["children"] = serde_json::Value::Null;
+                            }
+                            return Ok::<_, anyhow::Error>(line_json);
+                        }
+                    }
+                }
+                line_json["children"] = serde_json::Value::Null;
+                Ok(line_json)
+            })
+            .collect();
+
+        let results: Vec<serde_json::Value> = futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(serde_json::json!({
+            "count": results.len(),
+            "results": results,
+        }))
     }
 
     pub(crate) async fn get_where_used(
@@ -627,25 +698,7 @@ impl ArenaClient {
     ) -> Result<FileContent> {
         let path = format!("/items/{item_guid}/files/{file_guid}/content");
         let (bytes, content_type) = self.get_bytes(&path).await?;
-        if content_type.starts_with("text/")
-            || content_type.contains("json")
-            || content_type.contains("xml")
-        {
-            Ok(FileContent {
-                content_type,
-                encoding: "text".to_string(),
-                data: String::from_utf8_lossy(&bytes).into_owned(),
-                size_bytes: bytes.len(),
-            })
-        } else {
-            use base64::Engine;
-            Ok(FileContent {
-                content_type,
-                encoding: "base64".to_string(),
-                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
-                size_bytes: bytes.len(),
-            })
-        }
+        Ok(Self::bytes_to_file_content(bytes, content_type))
     }
 
     pub(crate) async fn search_files(
@@ -1019,25 +1072,7 @@ impl ArenaClient {
     pub(crate) async fn get_item_thumbnail(&self, guid: &str) -> Result<FileContent> {
         let path = format!("/items/{guid}/thumbnail");
         let (bytes, content_type) = self.get_bytes(&path).await?;
-        if content_type.starts_with("text/")
-            || content_type.contains("json")
-            || content_type.contains("xml")
-        {
-            Ok(FileContent {
-                content_type,
-                encoding: "text".to_string(),
-                data: String::from_utf8_lossy(&bytes).into_owned(),
-                size_bytes: bytes.len(),
-            })
-        } else {
-            use base64::Engine;
-            Ok(FileContent {
-                content_type,
-                encoding: "base64".to_string(),
-                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
-                size_bytes: bytes.len(),
-            })
-        }
+        Ok(Self::bytes_to_file_content(bytes, content_type))
     }
 
     pub(crate) async fn get_change_history(&self, guid: &str) -> Result<serde_json::Value> {
@@ -1079,25 +1114,7 @@ impl ArenaClient {
     pub(crate) async fn get_file_content(&self, guid: &str) -> Result<FileContent> {
         let path = format!("/files/{guid}/content");
         let (bytes, content_type) = self.get_bytes(&path).await?;
-        if content_type.starts_with("text/")
-            || content_type.contains("json")
-            || content_type.contains("xml")
-        {
-            Ok(FileContent {
-                content_type,
-                encoding: "text".to_string(),
-                data: String::from_utf8_lossy(&bytes).into_owned(),
-                size_bytes: bytes.len(),
-            })
-        } else {
-            use base64::Engine;
-            Ok(FileContent {
-                content_type,
-                encoding: "base64".to_string(),
-                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
-                size_bytes: bytes.len(),
-            })
-        }
+        Ok(Self::bytes_to_file_content(bytes, content_type))
     }
 
     pub(crate) async fn get_request_files(&self, guid: &str) -> Result<serde_json::Value> {

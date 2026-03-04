@@ -855,6 +855,14 @@ pub struct GetTrainingPlanParams {
 pub struct EmptyParams {}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetBomRecursiveParams {
+    #[schemars(description = "The GUID of the top-level item")]
+    pub guid: String,
+    #[schemars(description = "Max recursion depth (default 10, max 50)")]
+    pub max_depth: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetBomSubstitutesParams {
     #[schemars(description = "The GUID of the parent item")]
     pub item_guid: String,

@@ -197,6 +197,22 @@ impl ArenaServer {
     }
 
     #[tool(
+        description = "Get the full recursive Bill of Materials for an item. Walks all children concurrently and nests them. Each line includes a 'children' field (null for leaves, {count, results} for sub-assemblies). Use max_depth to limit recursion (default 10, max 50)."
+    )]
+    async fn get_bom_recursive(
+        &self,
+        params: Parameters<GetBomRecursiveParams>,
+    ) -> Result<String, McpError> {
+        let max_depth = params.0.max_depth.unwrap_or(10).min(50);
+        let result = self
+            .client
+            .get_bom_recursive(&params.0.guid, max_depth)
+            .await
+            .map_err(to_mcp_error)?;
+        to_json(&result)
+    }
+
+    #[tool(
         description = "Get where-used information for an item. Returns parent assemblies that contain this item."
     )]
     async fn get_where_used(&self, params: Parameters<GetItemParams>) -> Result<String, McpError> {
