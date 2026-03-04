@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use arena_app_protocol::FrontendCommand;
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -16,6 +18,7 @@ enum BlockKind {
     Error,
 }
 
+#[derive(Clone)]
 enum LogBlock {
     Prompt { meta: String, body: String },
     Response { meta: String, body: String },
@@ -57,15 +60,23 @@ impl LogBlock {
             | Self::Error { time, message } => (time.as_str(), message.as_str()),
         }
     }
+}
 
-    fn matches_search(&self, query: &str) -> bool {
-        if query.is_empty() {
-            return true;
-        }
-        let query_lower = query.to_lowercase();
-        let (first, second) = self.text_content();
-        first.to_lowercase().contains(&query_lower)
-            || second.to_lowercase().contains(&query_lower)
+#[derive(Clone)]
+struct SearchableBlock {
+    block: LogBlock,
+    search_text: String,
+}
+
+impl SearchableBlock {
+    fn new(block: LogBlock) -> Self {
+        let (first, second) = block.text_content();
+        let search_text = format!("{first} {second}").to_lowercase();
+        Self { block, search_text }
+    }
+
+    fn matches_search(&self, query_lower: &str) -> bool {
+        query_lower.is_empty() || self.search_text.contains(query_lower)
     }
 }
 
@@ -128,10 +139,10 @@ fn extract_meta(tag: &str) -> String {
         .to_string()
 }
 
-fn parse_blocks(raw: &str) -> Vec<LogBlock> {
+fn parse_from(lines: &[&str], start: usize) -> (Vec<SearchableBlock>, usize) {
     let mut blocks = Vec::new();
-    let lines: Vec<&str> = raw.lines().collect();
-    let mut index = 0;
+    let mut index = start;
+    let mut last_header_line = start;
 
     while index < lines.len() {
         let line = lines[index];
@@ -141,6 +152,7 @@ fn parse_blocks(raw: &str) -> Vec<LogBlock> {
             continue;
         }
 
+        last_header_line = index;
         let (time, level, message) = parse_header(line);
 
         if message.starts_with("\u{2501}\u{2501}\u{2501}") {
@@ -157,51 +169,53 @@ fn parse_blocks(raw: &str) -> Vec<LogBlock> {
             let body = body_lines.join("\n");
             let meta = extract_meta(tag);
 
-            if tag.contains("PROMPT") {
-                blocks.push(LogBlock::Prompt { meta, body });
+            let block = if tag.contains("PROMPT") {
+                LogBlock::Prompt { meta, body }
             } else if tag.contains("RESPONSE") {
-                blocks.push(LogBlock::Response { meta, body });
+                LogBlock::Response { meta, body }
             } else if tag.contains("THINKING") {
-                blocks.push(LogBlock::Thinking { meta, body });
+                LogBlock::Thinking { meta, body }
             } else if tag.contains("TOOL CALL") {
-                blocks.push(LogBlock::ToolCall { meta, body });
+                LogBlock::ToolCall { meta, body }
             } else if tag.contains("TOOL RESULT") {
-                blocks.push(LogBlock::ToolResult { meta, body });
+                LogBlock::ToolResult { meta, body }
             } else if tag.contains("ARENA REQUEST") {
-                blocks.push(LogBlock::ArenaRequest { meta, body });
+                LogBlock::ArenaRequest { meta, body }
             } else if tag.contains("ARENA RESPONSE") {
-                blocks.push(LogBlock::ArenaResponse { meta, body });
+                LogBlock::ArenaResponse { meta, body }
             } else {
-                blocks.push(LogBlock::Info {
+                LogBlock::Info {
                     time: time.to_string(),
                     message: format!("{tag}\n{body}"),
-                });
-            }
+                }
+            };
+            blocks.push(SearchableBlock::new(block));
             continue;
         }
 
-        match level {
-            "ERROR" => blocks.push(LogBlock::Error {
+        let block = match level {
+            "ERROR" => LogBlock::Error {
                 time: time.to_string(),
                 message: message.to_string(),
-            }),
-            "WARN" => blocks.push(LogBlock::Warn {
+            },
+            "WARN" => LogBlock::Warn {
                 time: time.to_string(),
                 message: message.to_string(),
-            }),
-            _ => blocks.push(LogBlock::Info {
+            },
+            _ => LogBlock::Info {
                 time: time.to_string(),
                 message: message.to_string(),
-            }),
-        }
+            },
+        };
+        blocks.push(SearchableBlock::new(block));
         index += 1;
     }
 
-    blocks
+    (blocks, last_header_line)
 }
 
-fn render_block(block: LogBlock) -> leptos::tachys::view::any_view::AnyView {
-    match block {
+fn render_block(block: &LogBlock) -> leptos::tachys::view::any_view::AnyView {
+    match block.clone() {
         LogBlock::Prompt { meta, body } => view! {
             <div class="my-2 rounded border border-[#1f6feb44] bg-[#1f6feb11]">
                 <div class="px-3 py-1.5 text-[10px] font-bold text-[#58a6ff] border-b border-[#1f6feb44] tracking-wide">
@@ -338,13 +352,46 @@ pub fn LogsView() -> impl IntoView {
     let search_text = RwSignal::new(String::new());
     let active_filter = RwSignal::<Option<BlockKind>>::new(None);
 
-    let on_refresh = move |_| {
-        app.log_content.set(String::new());
-        nightshade::webview::send(&FrontendCommand::ResetLogs);
-        nightshade::webview::send(&FrontendCommand::ReadLogs);
-    };
+    let blocks_signal = RwSignal::new(Vec::<SearchableBlock>::new());
+    let parser_resume_line = Cell::new(0usize);
+    let parser_complete_count = Cell::new(0usize);
+    let parser_content_len = Cell::new(0usize);
+
+    Effect::new(move |_| {
+        let content = app.log_content.get();
+        let current_len = content.len();
+        let previous_len = parser_content_len.get();
+
+        if current_len == previous_len {
+            return;
+        }
+
+        let lines: Vec<&str> = content.lines().collect();
+
+        if current_len < previous_len || previous_len == 0 {
+            let (new_blocks, last_header) = parse_from(&lines, 0);
+            let complete = new_blocks.len().saturating_sub(1);
+            blocks_signal.set(new_blocks);
+            parser_resume_line.set(last_header);
+            parser_complete_count.set(complete);
+        } else {
+            let resume = parser_resume_line.get();
+            let truncate_to = parser_complete_count.get();
+            let (new_blocks, last_header) = parse_from(&lines, resume);
+            blocks_signal.update(|existing| {
+                existing.truncate(truncate_to);
+                existing.extend(new_blocks);
+            });
+            let new_complete = blocks_signal.with_untracked(|blocks| blocks.len().saturating_sub(1));
+            parser_resume_line.set(last_header);
+            parser_complete_count.set(new_complete);
+        }
+
+        parser_content_len.set(current_len);
+    });
 
     let on_open_file = move |_| {
+        app.log_content.set(String::new());
         nightshade::webview::send(&FrontendCommand::OpenLogFile);
     };
 
@@ -352,10 +399,10 @@ pub fn LogsView() -> impl IntoView {
         drop(prev);
         let on_logs_tab = app.view.get() == View::Logs;
         let enabled = auto_refresh.get() && on_logs_tab;
-        if on_logs_tab {
-            nightshade::webview::send(&FrontendCommand::ReadLogs);
-        }
         if enabled {
+            app.log_content.set(String::new());
+            nightshade::webview::send(&FrontendCommand::ResetLogs);
+            nightshade::webview::send(&FrontendCommand::ReadLogs);
             let callback = Closure::wrap(Box::new(move || {
                 nightshade::webview::send(&FrontendCommand::ReadLogs);
             }) as Box<dyn Fn()>);
@@ -380,13 +427,16 @@ pub fn LogsView() -> impl IntoView {
             <div class="flex items-center gap-3 mb-2">
                 <h2 class="text-lg font-bold text-[#c9d1d9]">"Logs"</h2>
                 <button
-                    class="px-3 py-1 text-xs bg-[#21262d] text-[#c9d1d9] border border-[#30363d] rounded hover:bg-[#30363d] cursor-pointer"
-                    on:click=on_refresh
-                >
-                    "Refresh"
-                </button>
-                <button
-                    class="px-3 py-1 text-xs bg-[#21262d] text-[#c9d1d9] border border-[#30363d] rounded hover:bg-[#30363d] cursor-pointer"
+                    class=move || format!(
+                        "px-3 py-1 text-xs border border-[#30363d] rounded {} {}",
+                        if auto_refresh.get() {
+                            "bg-[#21262d44] text-[#484f58] cursor-default"
+                        } else {
+                            "bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d] cursor-pointer"
+                        },
+                        ""
+                    )
+                    disabled=move || auto_refresh.get()
                     on:click=on_open_file
                 >
                     "Open File..."
@@ -423,24 +473,24 @@ pub fn LogsView() -> impl IntoView {
             <div class="flex-1 min-h-0 overflow-auto bg-[#0d1117] border border-[#30363d] rounded-lg flex flex-col-reverse">
                 <div class="p-2 font-mono">
                     {move || {
-                        let content = app.log_content.get();
-                        if content.is_empty() {
-                            view! { <div class="px-3 py-2 text-xs text-[#484f58]">"Loading..."</div> }.into_any()
-                        } else {
-                            let query = search_text.get();
-                            let filter = active_filter.get();
-                            let blocks = parse_blocks(&content);
-                            blocks
-                                .into_iter()
-                                .filter(|block| {
-                                    let kind_ok = filter.is_none_or(|kind| block.kind() == kind);
-                                    let search_ok = block.matches_search(&query);
-                                    kind_ok && search_ok
-                                })
-                                .map(render_block)
-                                .collect_view()
-                                .into_any()
-                        }
+                        blocks_signal.with(|all_blocks| {
+                            if all_blocks.is_empty() {
+                                view! { <div class="px-3 py-2 text-xs text-[#484f58]">"Loading..."</div> }.into_any()
+                            } else {
+                                let query_lower = search_text.get().to_lowercase();
+                                let filter = active_filter.get();
+                                all_blocks
+                                    .iter()
+                                    .filter(|searchable_block| {
+                                        let kind_ok = filter
+                                            .is_none_or(|kind| searchable_block.block.kind() == kind);
+                                        kind_ok && searchable_block.matches_search(&query_lower)
+                                    })
+                                    .map(|searchable_block| render_block(&searchable_block.block))
+                                    .collect_view()
+                                    .into_any()
+                            }
+                        })
                     }}
                 </div>
             </div>
