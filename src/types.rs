@@ -512,30 +512,6 @@ pub struct DeleteItemParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetItemSourcingParams {
-    #[schemars(description = "The GUID of the item")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetItemComplianceParams {
-    #[schemars(description = "The GUID of the item")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetItemReferencesParams {
-    #[schemars(description = "The GUID of the item")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetItemQualityParams {
-    #[schemars(description = "The GUID of the item")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ItemLifecyclePhaseChangeParams {
     #[schemars(description = "The GUID of the item")]
     pub item_guid: String,
@@ -543,18 +519,6 @@ pub struct ItemLifecyclePhaseChangeParams {
     pub lifecycle_phase_guid: String,
     #[schemars(description = "Optional comment for the phase change")]
     pub comment: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetBomParams {
-    #[schemars(description = "The GUID of the item whose BOM to retrieve")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetWhereUsedParams {
-    #[schemars(description = "The GUID of the item to find parent assemblies for")]
-    pub guid: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -620,12 +584,6 @@ pub struct GetChangeParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetChangeAffectedItemsParams {
-    #[schemars(description = "The GUID of the change whose affected items to retrieve")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CreateChangeParams {
     #[schemars(description = "Change title")]
     pub title: Option<String>,
@@ -681,30 +639,6 @@ pub struct RemoveChangeAffectedItemParams {
     pub change_guid: String,
     #[schemars(description = "The GUID of the affected item entry to remove")]
     pub affected_item_guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetChangeFilesParams {
-    #[schemars(description = "The GUID of the change")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetChangeImplementationStatusesParams {
-    #[schemars(description = "The GUID of the change")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetItemRevisionsParams {
-    #[schemars(description = "The GUID of the item whose revisions to retrieve")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetItemFilesParams {
-    #[schemars(description = "The GUID of the item whose files to retrieve")]
-    pub guid: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -792,12 +726,6 @@ pub struct ChangeRequestStatusParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetRequestItemsParams {
-    #[schemars(description = "The GUID of the request")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SearchSuppliersParams {
     #[schemars(description = "Filter by supplier name (supports trailing * wildcard)")]
     pub name: Option<String>,
@@ -866,12 +794,6 @@ pub struct GetQualityProcessParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetQualityProcessStepsParams {
-    #[schemars(description = "The GUID of the quality process")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ChangeQualityStatusParams {
     #[schemars(description = "The GUID of the quality process")]
     pub quality_guid: String,
@@ -926,12 +848,6 @@ pub struct SearchTrainingPlansParams {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetTrainingPlanParams {
     #[schemars(description = "The GUID of the training plan to retrieve")]
-    pub guid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetTrainingPlanRecordsParams {
-    #[schemars(description = "The GUID of the training plan")]
     pub guid: String,
 }
 

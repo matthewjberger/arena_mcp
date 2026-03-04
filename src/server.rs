@@ -122,7 +122,7 @@ impl ArenaServer {
     )]
     async fn get_item_sourcing(
         &self,
-        params: Parameters<GetItemSourcingParams>,
+        params: Parameters<GetItemParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -135,7 +135,7 @@ impl ArenaServer {
     #[tool(description = "Get compliance requirements for an item.")]
     async fn get_item_compliance(
         &self,
-        params: Parameters<GetItemComplianceParams>,
+        params: Parameters<GetItemParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -148,7 +148,7 @@ impl ArenaServer {
     #[tool(description = "Get references for an item.")]
     async fn get_item_references(
         &self,
-        params: Parameters<GetItemReferencesParams>,
+        params: Parameters<GetItemParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -161,7 +161,7 @@ impl ArenaServer {
     #[tool(description = "Get quality processes associated with an item.")]
     async fn get_item_quality(
         &self,
-        params: Parameters<GetItemQualityParams>,
+        params: Parameters<GetItemParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -187,7 +187,7 @@ impl ArenaServer {
     #[tool(
         description = "Get the Bill of Materials (BOM) for an item. Returns child components with quantities, reference designators, and line numbers."
     )]
-    async fn get_bom(&self, params: Parameters<GetBomParams>) -> Result<String, McpError> {
+    async fn get_bom(&self, params: Parameters<GetItemParams>) -> Result<String, McpError> {
         let result = self
             .client
             .get_bom(&params.0.guid)
@@ -199,10 +199,7 @@ impl ArenaServer {
     #[tool(
         description = "Get where-used information for an item. Returns parent assemblies that contain this item."
     )]
-    async fn get_where_used(
-        &self,
-        params: Parameters<GetWhereUsedParams>,
-    ) -> Result<String, McpError> {
+    async fn get_where_used(&self, params: Parameters<GetItemParams>) -> Result<String, McpError> {
         let result = self
             .client
             .get_where_used(&params.0.guid)
@@ -280,7 +277,7 @@ impl ArenaServer {
     )]
     async fn get_change_affected_items(
         &self,
-        params: Parameters<GetChangeAffectedItemsParams>,
+        params: Parameters<GetChangeParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -360,7 +357,7 @@ impl ArenaServer {
     #[tool(description = "Get files associated with a change order.")]
     async fn get_change_files(
         &self,
-        params: Parameters<GetChangeFilesParams>,
+        params: Parameters<GetChangeParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -373,7 +370,7 @@ impl ArenaServer {
     #[tool(description = "Get implementation statuses for a change order's affected items.")]
     async fn get_change_implementation_statuses(
         &self,
-        params: Parameters<GetChangeImplementationStatusesParams>,
+        params: Parameters<GetChangeParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -388,7 +385,7 @@ impl ArenaServer {
     )]
     async fn get_item_revisions(
         &self,
-        params: Parameters<GetItemRevisionsParams>,
+        params: Parameters<GetItemParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -401,10 +398,7 @@ impl ArenaServer {
     #[tool(
         description = "Get files associated with an item. Returns file metadata including name, format, size, and author."
     )]
-    async fn get_item_files(
-        &self,
-        params: Parameters<GetItemFilesParams>,
-    ) -> Result<String, McpError> {
+    async fn get_item_files(&self, params: Parameters<GetItemParams>) -> Result<String, McpError> {
         let result = self
             .client
             .get_item_files(&params.0.guid)
@@ -520,7 +514,7 @@ impl ArenaServer {
     #[tool(description = "Get items associated with a request.")]
     async fn get_request_items(
         &self,
-        params: Parameters<GetRequestItemsParams>,
+        params: Parameters<GetRequestParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -628,7 +622,7 @@ impl ArenaServer {
     #[tool(description = "Get the steps for a quality process.")]
     async fn get_quality_process_steps(
         &self,
-        params: Parameters<GetQualityProcessStepsParams>,
+        params: Parameters<GetQualityProcessParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
@@ -716,7 +710,7 @@ impl ArenaServer {
     #[tool(description = "Get training records for a training plan.")]
     async fn get_training_plan_records(
         &self,
-        params: Parameters<GetTrainingPlanRecordsParams>,
+        params: Parameters<GetTrainingPlanParams>,
     ) -> Result<String, McpError> {
         let result = self
             .client
