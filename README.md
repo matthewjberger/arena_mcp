@@ -176,7 +176,7 @@ The `app/` directory contains a standalone desktop application for interacting w
 - **File downloads**: Download files attached to items directly from the browser
 - **Read-only mode**: Write operations (create, update, delete) are blocked by default; enable in Settings
 - **Saved searches**: Save and recall search queries (stored in browser localStorage)
-- **Logs viewer**: View the current session's log in-app, refresh on demand, or open an external log file for debugging
+- **Logs viewer**: View the current session's log in-app with auto-refresh, or open an external log file for debugging
 
 ### Running
 
@@ -187,7 +187,15 @@ just run
 
 ### Logs
 
-Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_2026-03-04_14-30-00.log`). Logs include login events, Arena API calls, Claude CLI interactions, tool use, and errors. GPU-level noise (wgpu, naga) is filtered out so logs stay readable.
+Each run creates a timestamped log file in `app/site/logs/` (e.g., `arena_plm_2026-03-04_14-30-00.log`). GPU-level noise (wgpu, naga) is filtered out so logs stay readable. Logs capture:
+
+- Full prompts sent to Claude
+- Claude's thinking and responses (logged per-turn)
+- Tool calls with pretty-printed JSON input
+- Arena REST API requests, methods, and response sizes
+- Login events, errors, and session lifecycle
+
+The Logs tab in the app auto-refreshes every 2 seconds while active. You can also open a log file from disk to debug issues from other users' sessions.
 
 ### Architecture
 
