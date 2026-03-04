@@ -1,4 +1,6 @@
-use anyhow::{Result, anyhow};
+use std::time::Duration;
+
+use anyhow::{Context, Result, anyhow};
 use reqwest::Client;
 use tokio::sync::Mutex;
 
@@ -26,7 +28,7 @@ impl ArenaClient {
             .unwrap_or_else(|_| "https://api.arenasolutions.com/v1".to_string());
 
         Ok(Self {
-            http: Client::new(),
+            http: Client::builder().timeout(Duration::from_secs(30)).build()?,
             base_url,
             email,
             password,
@@ -53,13 +55,16 @@ impl ArenaClient {
     }
 
     pub(crate) async fn logout(&self) {
-        let session = self.session.lock().await;
-        if let Some(token) = session.as_ref() {
+        let token = {
+            let session = self.session.lock().await;
+            session.clone()
+        };
+        if let Some(token) = token {
             let url = format!("{}/login", self.base_url);
             let _ = self
                 .http
                 .put(&url)
-                .header("arena_session_id", token)
+                .header("arena_session_id", &token)
                 .send()
                 .await;
         }
@@ -82,36 +87,23 @@ impl ArenaClient {
         }
     }
 
-    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url, path);
+    async fn send_with_auth(
+        &self,
+        build_request: impl Fn(&str) -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response> {
         let token = self.ensure_session().await?;
-
-        let response = self
-            .http
-            .get(&url)
-            .header("arena_session_id", &token)
-            .header("content-type", "application/json")
-            .query(query)
-            .send()
-            .await?;
+        let response = build_request(&token).send().await?;
 
         if response.status().as_u16() == 401 {
             self.invalidate_session(&token).await;
             let new_token = self.ensure_session().await?;
-            let retry_response = self
-                .http
-                .get(&url)
-                .header("arena_session_id", &new_token)
-                .header("content-type", "application/json")
-                .query(query)
-                .send()
-                .await?;
+            let retry_response = build_request(&new_token).send().await?;
             if !retry_response.status().is_success() {
                 let status = retry_response.status();
                 let text = retry_response.text().await.unwrap_or_default();
                 return Err(anyhow!("Arena API error ({}): {}", status, text));
             }
-            return Ok(retry_response.json().await?);
+            return Ok(retry_response);
         }
 
         if !response.status().is_success() {
@@ -120,171 +112,74 @@ impl ArenaClient {
             return Err(anyhow!("Arena API error ({}): {}", status, text));
         }
 
+        Ok(response)
+    }
+
+    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .send_with_auth(|token| {
+                self.http
+                    .get(&url)
+                    .header("arena_session_id", token)
+                    .header("content-type", "application/json")
+                    .query(query)
+            })
+            .await?;
         Ok(response.json().await?)
     }
 
     async fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
-        let token = self.ensure_session().await?;
-
         let response = self
-            .http
-            .post(&url)
-            .header("arena_session_id", &token)
-            .header("content-type", "application/json")
-            .json(body)
-            .send()
+            .send_with_auth(|token| {
+                self.http
+                    .post(&url)
+                    .header("arena_session_id", token)
+                    .header("content-type", "application/json")
+                    .json(body)
+            })
             .await?;
-
-        if response.status().as_u16() == 401 {
-            self.invalidate_session(&token).await;
-            let new_token = self.ensure_session().await?;
-            let retry_response = self
-                .http
-                .post(&url)
-                .header("arena_session_id", &new_token)
-                .header("content-type", "application/json")
-                .json(body)
-                .send()
-                .await?;
-            if !retry_response.status().is_success() {
-                let status = retry_response.status();
-                let text = retry_response.text().await.unwrap_or_default();
-                return Err(anyhow!("Arena API error ({}): {}", status, text));
-            }
-            return Ok(retry_response.json().await?);
-        }
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Arena API error ({}): {}", status, text));
-        }
-
         Ok(response.json().await?)
     }
 
     async fn put(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
-        let token = self.ensure_session().await?;
-
         let response = self
-            .http
-            .put(&url)
-            .header("arena_session_id", &token)
-            .header("content-type", "application/json")
-            .json(body)
-            .send()
+            .send_with_auth(|token| {
+                self.http
+                    .put(&url)
+                    .header("arena_session_id", token)
+                    .header("content-type", "application/json")
+                    .json(body)
+            })
             .await?;
-
-        if response.status().as_u16() == 401 {
-            self.invalidate_session(&token).await;
-            let new_token = self.ensure_session().await?;
-            let retry_response = self
-                .http
-                .put(&url)
-                .header("arena_session_id", &new_token)
-                .header("content-type", "application/json")
-                .json(body)
-                .send()
-                .await?;
-            if !retry_response.status().is_success() {
-                let status = retry_response.status();
-                let text = retry_response.text().await.unwrap_or_default();
-                return Err(anyhow!("Arena API error ({}): {}", status, text));
-            }
-            return Ok(retry_response.json().await?);
-        }
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Arena API error ({}): {}", status, text));
-        }
-
         Ok(response.json().await?)
     }
 
     async fn delete(&self, path: &str) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
-        let token = self.ensure_session().await?;
-
         let response = self
-            .http
-            .delete(&url)
-            .header("arena_session_id", &token)
-            .header("content-type", "application/json")
-            .send()
+            .send_with_auth(|token| {
+                self.http
+                    .delete(&url)
+                    .header("arena_session_id", token)
+                    .header("content-type", "application/json")
+            })
             .await?;
-
-        if response.status().as_u16() == 401 {
-            self.invalidate_session(&token).await;
-            let new_token = self.ensure_session().await?;
-            let retry_response = self
-                .http
-                .delete(&url)
-                .header("arena_session_id", &new_token)
-                .header("content-type", "application/json")
-                .send()
-                .await?;
-            if !retry_response.status().is_success() {
-                let status = retry_response.status();
-                let text = retry_response.text().await.unwrap_or_default();
-                return Err(anyhow!("Arena API error ({}): {}", status, text));
-            }
-            return Ok(retry_response.json().await?);
+        let status = response.status();
+        let bytes = response.bytes().await?;
+        if status.as_u16() == 204 || bytes.is_empty() {
+            return Ok(serde_json::Value::Null);
         }
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Arena API error ({}): {}", status, text));
-        }
-
-        Ok(response.json().await?)
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, String)> {
         let url = format!("{}{}", self.base_url, path);
-        let token = self.ensure_session().await?;
-
         let response = self
-            .http
-            .get(&url)
-            .header("arena_session_id", &token)
-            .send()
+            .send_with_auth(|token| self.http.get(&url).header("arena_session_id", token))
             .await?;
-
-        if response.status().as_u16() == 401 {
-            self.invalidate_session(&token).await;
-            let new_token = self.ensure_session().await?;
-            let retry_response = self
-                .http
-                .get(&url)
-                .header("arena_session_id", &new_token)
-                .send()
-                .await?;
-            if !retry_response.status().is_success() {
-                let status = retry_response.status();
-                let text = retry_response.text().await.unwrap_or_default();
-                return Err(anyhow!("Arena API error ({}): {}", status, text));
-            }
-            let content_type = retry_response
-                .headers()
-                .get("content-type")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("application/octet-stream")
-                .to_string();
-            let bytes = retry_response.bytes().await?.to_vec();
-            return Ok((bytes, content_type));
-        }
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Arena API error ({}): {}", status, text));
-        }
-
         let content_type = response
             .headers()
             .get("content-type")
@@ -300,7 +195,8 @@ impl ArenaClient {
     ) -> Result<Option<Vec<serde_json::Value>>> {
         match json {
             Some(text) => {
-                let parsed: Vec<serde_json::Value> = serde_json::from_str(text)?;
+                let parsed: Vec<serde_json::Value> = serde_json::from_str(text)
+                    .context("additional_attributes_json must be a valid JSON array")?;
                 Ok(Some(parsed))
             }
             None => Ok(None),
@@ -512,10 +408,7 @@ impl ArenaClient {
             query.push(("title".to_string(), title.clone()));
         }
         if let Some(lifecycle_status) = &params.lifecycle_status {
-            query.push((
-                "lifecycleStatus.type".to_string(),
-                lifecycle_status.clone(),
-            ));
+            query.push(("lifecycleStatus.type".to_string(), lifecycle_status.clone()));
         }
         if let Some(implementation_status) = &params.implementation_status {
             query.push((
@@ -632,10 +525,7 @@ impl ArenaClient {
         self.delete(&path).await
     }
 
-    pub(crate) async fn get_change_files(
-        &self,
-        guid: &str,
-    ) -> Result<ArenaListResponse<ItemFile>> {
+    pub(crate) async fn get_change_files(&self, guid: &str) -> Result<ArenaListResponse<ItemFile>> {
         let path = format!("/changes/{guid}/files");
         let value = self.get(&path, &[]).await?;
         Ok(serde_json::from_value(value)?)
@@ -721,10 +611,7 @@ impl ArenaClient {
             query.push(("title".to_string(), title.clone()));
         }
         if let Some(lifecycle_status) = &params.lifecycle_status {
-            query.push((
-                "lifecycleStatus.type".to_string(),
-                lifecycle_status.clone(),
-            ));
+            query.push(("lifecycleStatus.type".to_string(), lifecycle_status.clone()));
         }
         if let Some(offset) = params.offset {
             query.push(("offset".to_string(), offset.to_string()));
@@ -797,7 +684,7 @@ impl ArenaClient {
     pub(crate) async fn get_request_items(
         &self,
         guid: &str,
-    ) -> Result<ArenaListResponse<serde_json::Value>> {
+    ) -> Result<ArenaListResponse<RequestItem>> {
         let path = format!("/requests/{guid}/items");
         let value = self.get(&path, &[]).await?;
         Ok(serde_json::from_value(value)?)
@@ -1014,32 +901,22 @@ impl ArenaClient {
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn get_lifecycle_phases(
-        &self,
-    ) -> Result<ArenaListResponse<LifecyclePhase>> {
-        let value = self
-            .get("/settings/items/lifecyclephases", &[])
-            .await?;
+    pub(crate) async fn get_lifecycle_phases(&self) -> Result<ArenaListResponse<LifecyclePhase>> {
+        let value = self.get("/settings/items/lifecyclephases", &[]).await?;
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn get_item_categories(
-        &self,
-    ) -> Result<ArenaListResponse<ItemCategory>> {
+    pub(crate) async fn get_item_categories(&self) -> Result<ArenaListResponse<ItemCategory>> {
         let value = self.get("/settings/items/categories", &[]).await?;
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn get_change_categories(
-        &self,
-    ) -> Result<ArenaListResponse<ChangeCategory>> {
+    pub(crate) async fn get_change_categories(&self) -> Result<ArenaListResponse<ChangeCategory>> {
         let value = self.get("/settings/changes/categories", &[]).await?;
         Ok(serde_json::from_value(value)?)
     }
 
-    pub(crate) async fn get_item_number_formats(
-        &self,
-    ) -> Result<ArenaListResponse<NumberFormat>> {
+    pub(crate) async fn get_item_number_formats(&self) -> Result<ArenaListResponse<NumberFormat>> {
         let value = self.get("/settings/items/numberformats", &[]).await?;
         Ok(serde_json::from_value(value)?)
     }

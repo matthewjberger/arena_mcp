@@ -258,6 +258,15 @@ pub struct Request {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RequestItem {
+    pub guid: Option<String>,
+    pub item: Option<BomItemRef>,
+    pub lifecycle_phase: Option<GuidRef>,
+    pub additional_attributes: Option<Vec<serde_json::Value>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ItemCategory {
     pub guid: Option<String>,
     pub name: Option<String>,
@@ -551,9 +560,13 @@ pub struct SearchChangesParams {
     pub number: Option<String>,
     #[schemars(description = "Filter by change title")]
     pub title: Option<String>,
-    #[schemars(description = "Filter by lifecycle status type (OPEN_AND_UNLOCKED, EFFECTIVE, APPROVED, etc.)")]
+    #[schemars(
+        description = "Filter by lifecycle status type (OPEN_AND_UNLOCKED, EFFECTIVE, APPROVED, etc.)"
+    )]
     pub lifecycle_status: Option<String>,
-    #[schemars(description = "Filter by implementation status (NOT_STARTED, IN_PROGRESS, NEEDS_ATTENTION, DONE)")]
+    #[schemars(
+        description = "Filter by implementation status (NOT_STARTED, IN_PROGRESS, NEEDS_ATTENTION, DONE)"
+    )]
     pub implementation_status: Option<String>,
     #[schemars(description = "Result offset for pagination (default 0)")]
     pub offset: Option<i64>,
@@ -601,7 +614,9 @@ pub struct UpdateChangeParams {
 pub struct ChangeChangeStatusParams {
     #[schemars(description = "The GUID of the change")]
     pub change_guid: String,
-    #[schemars(description = "Target status: SUBMITTED, APPROVED, EFFECTIVE, COMPLETED, CANCELED, REOPENED, or WITHDRAWN")]
+    #[schemars(
+        description = "Target status: SUBMITTED, APPROVED, EFFECTIVE, COMPLETED, CANCELED, REOPENED, or WITHDRAWN"
+    )]
     pub status: String,
     #[schemars(description = "Comment for the status change")]
     pub comment: Option<String>,
@@ -685,7 +700,9 @@ pub struct SearchRequestsParams {
     pub number: Option<String>,
     #[schemars(description = "Filter by title")]
     pub title: Option<String>,
-    #[schemars(description = "Filter by lifecycle status (UNSUBMITTED, SUBMITTED, DEFERRED, PROMOTED, CLOSED)")]
+    #[schemars(
+        description = "Filter by lifecycle status (UNSUBMITTED, SUBMITTED, DEFERRED, PROMOTED, CLOSED)"
+    )]
     pub lifecycle_status: Option<String>,
     #[schemars(description = "Result offset for pagination (default 0)")]
     pub offset: Option<i64>,
@@ -727,7 +744,9 @@ pub struct UpdateRequestParams {
 pub struct ChangeRequestStatusParams {
     #[schemars(description = "The GUID of the request")]
     pub request_guid: String,
-    #[schemars(description = "Target status: SUBMITTED, DEFERRED, PROMOTED, CLOSED, or UNSUBMITTED")]
+    #[schemars(
+        description = "Target status: SUBMITTED, DEFERRED, PROMOTED, CLOSED, or UNSUBMITTED"
+    )]
     pub status: String,
     #[schemars(description = "Comment for the status change")]
     pub comment: Option<String>,
