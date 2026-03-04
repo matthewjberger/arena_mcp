@@ -4,7 +4,7 @@ extern crate alloc;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArenaMethod {
     SearchItems {
         number: Option<String>,

@@ -6,6 +6,7 @@ use arena_app_protocol::{AgentStatus, ArenaMethod, ArenaResult, BackendEvent, Fr
 use base64::Engine;
 use include_dir::{Dir, include_dir};
 use nightshade::claude::{ClaudeConfig, CliCommand, CliEvent, McpConfig, spawn_cli_worker};
+use nightshade::prelude::tracing;
 use nightshade::prelude::*;
 use nightshade::webview::{WebviewContext, serve_embedded_dir};
 
@@ -85,6 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (login_result_tx, login_result_rx) = mpsc::channel::<LoginResult>();
 
     let port = serve_embedded_dir(&DIST);
+    tracing::info!(port, "embedded site server started");
 
     launch(ArenaApp {
         port,
@@ -136,6 +138,7 @@ impl State for ArenaApp {
 
     fn initialize(&mut self, world: &mut World) {
         world.resources.user_interface.enabled = true;
+        tracing::info!("arena app initialized");
     }
 
     fn ui(&mut self, world: &mut World, ctx: &egui::Context) {
@@ -149,11 +152,13 @@ impl State for ArenaApp {
             .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
                 if let Some(handle) = &world.resources.window.handle {
-                    self.ctx.ensure_webview(
+                    if self.ctx.ensure_webview(
                         handle.clone(),
                         self.port,
                         ui.available_rect_before_wrap(),
-                    );
+                    ) {
+                        tracing::info!("webview created");
+                    }
                     handle.request_redraw();
                 }
             });
@@ -167,6 +172,7 @@ impl ArenaApp {
             match command {
                 FrontendCommand::Ready => {
                     if !self.connected {
+                        tracing::info!("frontend connected");
                         self.ctx.send(BackendEvent::Connected);
                         self.connected = true;
                     }
@@ -177,9 +183,11 @@ impl ArenaApp {
                     workspace_id,
                     base_url,
                 } => {
+                    tracing::info!(email = %email, workspace_id = ?workspace_id, "login requested");
                     self.handle_login(email, password, workspace_id, base_url);
                 }
                 FrontendCommand::Logout => {
+                    tracing::info!("logout requested");
                     self.handle_logout();
                 }
                 FrontendCommand::SendPrompt {
@@ -187,6 +195,12 @@ impl ArenaApp {
                     session_id,
                     model,
                 } => {
+                    tracing::info!(
+                        session_id = ?session_id,
+                        model = ?model,
+                        prompt_len = prompt.len(),
+                        "sending prompt to claude cli"
+                    );
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Thinking,
                     });
@@ -197,18 +211,21 @@ impl ArenaApp {
                     });
                 }
                 FrontendCommand::CancelRequest => {
+                    tracing::info!("cancel request");
                     let _ = self.cli_cmd_tx.send(CliCommand::Cancel);
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Idle,
                     });
                 }
                 FrontendCommand::ArenaRequest { request_id, method } => {
+                    tracing::debug!(request_id, ?method, "arena api request");
                     let sent = self
                         .arena_tx
                         .as_ref()
                         .map(|tx| tx.send((request_id, method)).is_ok())
                         .unwrap_or(false);
                     if !sent {
+                        tracing::warn!(request_id, "arena request failed: not connected");
                         self.ctx.send(BackendEvent::ArenaResponse {
                             request_id,
                             result: ArenaResult::Error {
@@ -223,6 +240,7 @@ impl ArenaApp {
                     file_guid,
                     file_name,
                 } => {
+                    tracing::info!(request_id, %file_name, "file download requested");
                     let sent = self
                         .file_tx
                         .as_ref()
@@ -237,6 +255,7 @@ impl ArenaApp {
                         })
                         .unwrap_or(false);
                     if !sent {
+                        tracing::warn!(request_id, "file download failed: not connected");
                         self.ctx.send(BackendEvent::FileError {
                             request_id,
                             message: "Not connected to Arena".into(),
@@ -244,6 +263,7 @@ impl ArenaApp {
                     }
                 }
                 FrontendCommand::SetWriteMode { enabled } => {
+                    tracing::info!(enabled, "write mode changed");
                     self.write_mode = enabled;
                     self.respawn_cli_worker();
                     self.ctx.send(BackendEvent::WriteModeChanged { enabled });
@@ -264,11 +284,14 @@ impl ArenaApp {
             .unwrap_or_else(|| "https://api.arenasolutions.com/v1".to_string());
 
         if !base_url.starts_with("https://") {
+            tracing::error!(%base_url, "login rejected: base URL must use HTTPS");
             self.ctx.send(BackendEvent::LoginFailure {
                 message: "Base URL must use HTTPS".to_string(),
             });
             return;
         }
+
+        tracing::info!(%base_url, "spawning login thread");
 
         let login_result_tx = self.login_result_tx.clone();
         let workspace_id_clone = workspace_id.clone();
@@ -295,6 +318,7 @@ impl ArenaApp {
             {
                 Ok(client) => client,
                 Err(error) => {
+                    tracing::error!(%error, "failed to build HTTP client");
                     let _ = login_result_tx.send(LoginResult::Failure {
                         message: format!("HTTP client error: {error}"),
                     });
@@ -303,9 +327,11 @@ impl ArenaApp {
             };
 
             let login_url = format!("{base_url_clone}/login");
+            tracing::debug!(%login_url, "posting login request");
             let response = match client.post(&login_url).json(&body).send() {
                 Ok(response) => response,
                 Err(error) => {
+                    tracing::error!(%error, "login connection failed");
                     let _ = login_result_tx.send(LoginResult::Failure {
                         message: format!("Connection failed: {error}"),
                     });
@@ -316,6 +342,7 @@ impl ArenaApp {
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().unwrap_or_default();
+                tracing::error!(%status, "login failed");
                 let _ = login_result_tx.send(LoginResult::Failure {
                     message: format!("Login failed ({status}): {text}"),
                 });
@@ -325,6 +352,7 @@ impl ArenaApp {
             let json: serde_json::Value = match response.json() {
                 Ok(json) => json,
                 Err(error) => {
+                    tracing::error!(%error, "invalid login response");
                     let _ = login_result_tx.send(LoginResult::Failure {
                         message: format!("Invalid login response: {error}"),
                     });
@@ -332,12 +360,10 @@ impl ArenaApp {
                 }
             };
 
-            let session_token = match json
-                .get("arenaSessionId")
-                .and_then(|value| value.as_str())
-            {
+            let session_token = match json.get("arenaSessionId").and_then(|value| value.as_str()) {
                 Some(token) => token.to_string(),
                 None => {
+                    tracing::error!("no session ID in login response");
                     let _ = login_result_tx.send(LoginResult::Failure {
                         message: "No session ID in login response".to_string(),
                     });
@@ -345,6 +371,7 @@ impl ArenaApp {
                 }
             };
 
+            tracing::info!("login successful, session token acquired");
             let _ = login_result_tx.send(LoginResult::Success {
                 email: email_clone,
                 password: password_clone,
@@ -366,6 +393,7 @@ impl ArenaApp {
                     base_url,
                     session_token,
                 } => {
+                    tracing::info!(%email, %base_url, "login succeeded, spawning workers");
                     let credentials = Credentials {
                         email,
                         password,
@@ -383,6 +411,7 @@ impl ArenaApp {
                     });
                 }
                 LoginResult::Failure { message } => {
+                    tracing::warn!(%message, "login failed");
                     self.ctx.send(BackendEvent::LoginFailure { message });
                 }
             }
@@ -390,6 +419,7 @@ impl ArenaApp {
     }
 
     fn handle_logout(&mut self) {
+        tracing::info!("logging out, dropping arena and cli workers");
         self.arena_tx = None;
         self.file_tx = None;
         self.credentials = None;
@@ -401,6 +431,7 @@ impl ArenaApp {
     }
 
     fn spawn_arena_worker(&mut self, credentials: &Credentials, initial_token: String) {
+        tracing::info!("spawning arena worker thread");
         let (arena_req_tx, arena_req_rx) = mpsc::channel::<(u32, ArenaMethod)>();
         let (file_req_tx, file_req_rx) = mpsc::channel::<FileDownloadRequest>();
 
@@ -420,12 +451,17 @@ impl ArenaApp {
                 .build()
             {
                 Ok(client) => client,
-                Err(_) => return,
+                Err(error) => {
+                    tracing::error!(%error, "arena worker: failed to build HTTP client");
+                    return;
+                }
             };
 
             let mut session_token: Option<String> = Some(initial_token);
+            tracing::info!("arena worker started with initial session token");
 
             let do_login = |client: &reqwest::blocking::Client| -> Result<String, String> {
+                tracing::info!("arena worker: re-authenticating");
                 let mut body = serde_json::json!({
                     "email": email,
                     "password": password,
@@ -439,6 +475,8 @@ impl ArenaApp {
                     .send()
                     .map_err(|error| error.to_string())?;
                 if !response.status().is_success() {
+                    let status = response.status();
+                    tracing::error!(%status, "arena worker: re-auth failed");
                     return Err(format!("Login failed: {}", response.status()));
                 }
                 let json: serde_json::Value = response.json().map_err(|error| error.to_string())?;
@@ -466,6 +504,7 @@ impl ArenaApp {
              -> Result<serde_json::Value, String> {
                 let token = ensure_session(session_token, client)?;
                 let url = format!("{base_url}{path}");
+                tracing::debug!(%path, "arena worker: GET");
                 let response = client
                     .get(&url)
                     .header("arena_session_id", &token)
@@ -475,6 +514,7 @@ impl ArenaApp {
                     .map_err(|error| error.to_string())?;
 
                 if response.status().as_u16() == 401 {
+                    tracing::warn!(%path, "arena worker: 401, re-authenticating");
                     *session_token = None;
                     let new_token = ensure_session(session_token, client)?;
                     let retry = client
@@ -490,6 +530,7 @@ impl ArenaApp {
                 if !response.status().is_success() {
                     let status = response.status();
                     let text = response.text().unwrap_or_default();
+                    tracing::error!(%path, %status, "arena worker: API error");
                     return Err(format!("Arena API error ({status}): {text}"));
                 }
                 response.json().map_err(|error| error.to_string())
@@ -501,6 +542,7 @@ impl ArenaApp {
              -> Result<(Vec<u8>, String), String> {
                 let token = ensure_session(session_token, client)?;
                 let url = format!("{base_url}{path}");
+                tracing::debug!(%path, "arena worker: GET bytes");
                 let response = client
                     .get(&url)
                     .header("arena_session_id", &token)
@@ -508,6 +550,7 @@ impl ArenaApp {
                     .map_err(|error| error.to_string())?;
 
                 if response.status().as_u16() == 401 {
+                    tracing::warn!(%path, "arena worker: 401 on file download, re-authenticating");
                     *session_token = None;
                     let new_token = ensure_session(session_token, client)?;
                     let retry = client
@@ -528,6 +571,7 @@ impl ArenaApp {
                 if !response.status().is_success() {
                     let status = response.status();
                     let text = response.text().unwrap_or_default();
+                    tracing::error!(%path, %status, "arena worker: file download error");
                     return Err(format!("Arena API error ({status}): {text}"));
                 }
                 let mime = response
@@ -662,25 +706,47 @@ impl ArenaApp {
                 let work = crossbeam_channel_select(&arena_req_rx, &file_req_rx);
 
                 match work {
-                    None => break,
+                    None => {
+                        tracing::info!("arena worker: all channels disconnected, shutting down");
+                        break;
+                    }
                     Some(WorkItem::Arena(request_id, method)) => {
+                        tracing::debug!(request_id, "arena worker: handling request");
                         let result = match handle_method(&mut session_token, &client, method) {
-                            Ok(json) => ArenaResult::Success {
-                                json: json.to_string(),
-                            },
-                            Err(message) => ArenaResult::Error { message },
+                            Ok(json) => {
+                                tracing::debug!(request_id, "arena worker: request succeeded");
+                                ArenaResult::Success {
+                                    json: json.to_string(),
+                                }
+                            }
+                            Err(message) => {
+                                tracing::warn!(request_id, %message, "arena worker: request failed");
+                                ArenaResult::Error { message }
+                            }
                         };
                         if arena_result_tx.send((request_id, result)).is_err() {
+                            tracing::warn!("arena worker: result channel closed");
                             break;
                         }
                     }
                     Some(WorkItem::File(request)) => {
+                        tracing::info!(
+                            request_id = request.request_id,
+                            file_name = %request.file_name,
+                            "arena worker: downloading file"
+                        );
                         let path = format!(
                             "/items/{}/files/{}/content",
                             request.item_guid, request.file_guid
                         );
                         match arena_get_bytes(&mut session_token, &client, &path) {
                             Ok((data, mime_type)) => {
+                                tracing::info!(
+                                    request_id = request.request_id,
+                                    size = data.len(),
+                                    %mime_type,
+                                    "arena worker: file downloaded"
+                                );
                                 if file_result_tx
                                     .send(FileResult::Success(FileDownloadResponse {
                                         request_id: request.request_id,
@@ -690,10 +756,16 @@ impl ArenaApp {
                                     }))
                                     .is_err()
                                 {
+                                    tracing::warn!("arena worker: file result channel closed");
                                     break;
                                 }
                             }
                             Err(message) => {
+                                tracing::error!(
+                                    request_id = request.request_id,
+                                    %message,
+                                    "arena worker: file download failed"
+                                );
                                 if file_result_tx
                                     .send(FileResult::Error(FileDownloadError {
                                         request_id: request.request_id,
@@ -701,6 +773,7 @@ impl ArenaApp {
                                     }))
                                     .is_err()
                                 {
+                                    tracing::warn!("arena worker: file result channel closed");
                                     break;
                                 }
                             }
@@ -742,9 +815,11 @@ impl ArenaApp {
 
     fn spawn_cli_worker(&mut self) {
         let Some(credentials) = &self.credentials else {
+            tracing::warn!("spawn_cli_worker called without credentials");
             return;
         };
         let Some(cli_cmd_rx) = self.cli_cmd_rx.take() else {
+            tracing::warn!("spawn_cli_worker called but command receiver already taken");
             return;
         };
 
@@ -762,6 +837,14 @@ impl ArenaApp {
         } else {
             Some(WRITE_TOOLS.iter().map(|tool| (*tool).to_string()).collect())
         };
+
+        tracing::info!(
+            write_mode = self.write_mode,
+            disallowed_count = disallowed
+                .as_ref()
+                .map_or(0, |tools: &Vec<String>| tools.len()),
+            "spawning claude cli worker"
+        );
 
         let config = ClaudeConfig {
             system_prompt: Some(
@@ -784,6 +867,7 @@ impl ArenaApp {
     }
 
     fn respawn_cli_worker(&mut self) {
+        tracing::info!("respawning claude cli worker");
         let (new_cmd_tx, new_cmd_rx) = mpsc::channel::<CliCommand>();
         self.cli_cmd_tx = new_cmd_tx;
         self.cli_cmd_rx = Some(new_cmd_rx);
@@ -794,6 +878,7 @@ impl ArenaApp {
         for event in self.cli_event_rx.try_iter() {
             match event {
                 CliEvent::SessionStarted { session_id } => {
+                    tracing::info!(%session_id, "cli session started");
                     self.ctx.send(BackendEvent::StreamingStarted { session_id });
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Streaming,
@@ -806,6 +891,7 @@ impl ArenaApp {
                     self.ctx.send(BackendEvent::ThinkingDelta { text });
                 }
                 CliEvent::ToolUseStarted { tool_name, tool_id } => {
+                    tracing::info!(%tool_name, %tool_id, "tool use started");
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::UsingTool {
                             tool_name: tool_name.clone(),
@@ -824,12 +910,14 @@ impl ArenaApp {
                     });
                 }
                 CliEvent::ToolUseFinished { tool_id } => {
+                    tracing::debug!(%tool_id, "tool use finished");
                     self.ctx.send(BackendEvent::ToolUseFinished { tool_id });
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Streaming,
                     });
                 }
                 CliEvent::TurnComplete { session_id } => {
+                    tracing::debug!(%session_id, "turn complete");
                     self.ctx.send(BackendEvent::TurnComplete { session_id });
                 }
                 CliEvent::Complete {
@@ -837,6 +925,12 @@ impl ArenaApp {
                     total_cost_usd,
                     num_turns,
                 } => {
+                    tracing::info!(
+                        %session_id,
+                        total_cost_usd,
+                        num_turns,
+                        "request complete"
+                    );
                     self.ctx.send(BackendEvent::RequestComplete {
                         session_id,
                         total_cost_usd,
@@ -847,6 +941,7 @@ impl ArenaApp {
                     });
                 }
                 CliEvent::Error { message } => {
+                    tracing::error!(%message, "cli error");
                     self.ctx.send(BackendEvent::Error { message });
                     self.ctx.send(BackendEvent::StatusUpdate {
                         status: AgentStatus::Idle,
@@ -858,6 +953,18 @@ impl ArenaApp {
 
     fn forward_arena_results(&mut self) {
         for (request_id, result) in self.arena_result_rx.try_iter() {
+            match &result {
+                ArenaResult::Success { json } => {
+                    tracing::debug!(
+                        request_id,
+                        response_len = json.len(),
+                        "arena response forwarded"
+                    );
+                }
+                ArenaResult::Error { message } => {
+                    tracing::warn!(request_id, %message, "arena error forwarded");
+                }
+            }
             self.ctx
                 .send(BackendEvent::ArenaResponse { request_id, result });
         }
@@ -867,6 +974,12 @@ impl ArenaApp {
         for result in self.file_result_rx.try_iter() {
             match result {
                 FileResult::Success(response) => {
+                    tracing::info!(
+                        request_id = response.request_id,
+                        file_name = %response.file_name,
+                        size = response.data.len(),
+                        "file content forwarded to frontend"
+                    );
                     let data_base64 =
                         base64::engine::general_purpose::STANDARD.encode(&response.data);
                     self.ctx.send(BackendEvent::FileContent {
@@ -877,6 +990,11 @@ impl ArenaApp {
                     });
                 }
                 FileResult::Error(error) => {
+                    tracing::error!(
+                        request_id = error.request_id,
+                        message = %error.message,
+                        "file download error forwarded to frontend"
+                    );
                     self.ctx.send(BackendEvent::FileError {
                         request_id: error.request_id,
                         message: error.message,
